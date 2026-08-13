@@ -38,6 +38,14 @@ class RepositoryTests(unittest.TestCase):
             addon_name = "plugin.video.sharedgdrive-{0}.zip".format(addon_version)
             self.assertTrue((site / "plugin.video.sharedgdrive" / addon_name).is_file())
 
+            index = (site / "index.html").read_text(encoding="utf-8")
+            self.assertIn(
+                '<a href="repository.sharedgdrive.zip">repository.sharedgdrive.zip</a>',
+                index,
+            )
+            addon_path = "plugin.video.sharedgdrive/{0}".format(addon_name)
+            self.assertIn('<a href="{0}">{0}</a>'.format(addon_path), index)
+
             xml_bytes = (site / "addons.xml").read_bytes()
             expected_checksum = hashlib.md5(xml_bytes).hexdigest() + "\n"
             self.assertEqual(expected_checksum, (site / "addons.xml.md5").read_text(encoding="ascii"))

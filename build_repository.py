@@ -137,8 +137,8 @@ def _write_index(output, addon_version, repository_version):
     <main>
         <h1>Shared Google Drive for Kodi</h1>
         <p>Install the repository ZIP in Kodi once, then install Shared Google Drive from that repository to receive updates.</p>
-        <p><a href="{repository_archive}">Download Shared Google Drive Repository {repository_version}</a></p>
-        <p><a href="{addon_archive}">Download Shared Google Drive {addon_version} directly</a></p>
+        <p>Download Shared Google Drive Repository {repository_version}: <a href="{repository_archive}">{repository_archive}</a></p>
+        <p>Download Shared Google Drive {addon_version} directly: <a href="{addon_archive}">{addon_archive}</a></p>
         <p><a href="https://github.com/arn7av/kodi-sharedgdrive">Source code and documentation</a></p>
     </main>
 </body>
