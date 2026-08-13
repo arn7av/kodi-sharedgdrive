@@ -251,6 +251,55 @@ class ExporterTests(unittest.TestCase):
         self.assertEqual(0, result["remaining"])
         self.assertEqual("manually changed", vfs.files[path])
 
+    def test_auto_prune_rejects_outer_whitespace_changes(self):
+        for transform in (
+            lambda content: " " + content,
+            lambda content: content + "\n",
+            lambda content: content.rstrip("\n"),
+            lambda content: content.rstrip("\n") + " \n",
+        ):
+            with self.subTest(transform=transform):
+                vfs = MemoryVfs()
+                SnapshotExporter(
+                    FakeDrive(),
+                    vfs,
+                    "exports",
+                    "plugin://plugin.video.sharedgdrive/",
+                ).export()
+                SnapshotExporter(
+                    FakeDrive(videos=[]),
+                    vfs,
+                    "exports",
+                    "plugin://plugin.video.sharedgdrive/",
+                ).export()
+                path = "exports/Movies/Example (2026).strm"
+                vfs.files[path] = transform(vfs.files[path])
+                manager = StaleExportManager(
+                    vfs,
+                    "exports",
+                    "plugin://plugin.video.sharedgdrive/",
+                    "drive_1",
+                )
+
+                result = manager.remove_all_owned_stale()
+
+                self.assertEqual(0, result["removed"])
+                self.assertEqual(1, result["skipped"])
+                self.assertIn(path, vfs.files)
+
+    def test_auto_prune_accepts_single_crlf_line_ending(self):
+        vfs = MemoryVfs()
+        SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+        SnapshotExporter(FakeDrive(videos=[]), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+        path = "exports/Movies/Example (2026).strm"
+        vfs.files[path] = vfs.files[path].replace("\n", "\r\n")
+        manager = StaleExportManager(vfs, "exports", "plugin://plugin.video.sharedgdrive/", "drive_1")
+
+        result = manager.remove_all_owned_stale()
+
+        self.assertEqual(1, result["removed"])
+        self.assertNotIn(path, vfs.files)
+
     def test_auto_prune_retains_manifest_entry_when_local_delete_fails(self):
         vfs = MemoryVfs()
         SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()

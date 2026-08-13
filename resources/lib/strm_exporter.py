@@ -505,7 +505,10 @@ def _has_expected_content(vfs, path, expected):
     try:
         with vfs.File(path) as source:
             content = _read_limited(source, _MAX_STRM_BYTES)
-        return content.strip() == expected.strip()
+        return content == expected or (
+            expected.endswith("\n")
+            and content == expected[:-1] + "\r\n"
+        )
     except (OSError, ValueError, TypeError, DriveError):
         return False
 

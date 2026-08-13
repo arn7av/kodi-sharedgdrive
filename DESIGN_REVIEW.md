@@ -1,6 +1,6 @@
 # Security and performance design review
 
-This review covers version 0.2.1 and the intended single-service-account, single-shared-drive use case plus its explicit one-shot diagnostic exception.
+This review covers the intended single-service-account, single-shared-drive use case plus its explicit one-shot diagnostic exception.
 
 ## Security conclusions
 

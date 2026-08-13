@@ -10,9 +10,6 @@ SPEC.loader.exec_module(PACKAGE)
 
 
 class PackageTests(unittest.TestCase):
-    def test_version_comes_from_addon_manifest(self):
-        self.assertEqual("0.2.1", PACKAGE._version())
-
     def test_rejects_non_semantic_manifest_versions(self):
         for version in (".", "1..2", "1.2", "1.2.3.4"):
             root = mock.Mock()

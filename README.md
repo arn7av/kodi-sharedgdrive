@@ -140,4 +140,4 @@ The script excludes `.git`, tests, caches, unexpected files, symlinks, and devel
 
 `.github/workflows/ci.yml` runs the unit suite, Python/XML validation, and package integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
 
-`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.2.1` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.
+`.github/workflows/release.yml` publishes a release when a semantic version tag in the form `v<major>.<minor>.<patch>` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.
