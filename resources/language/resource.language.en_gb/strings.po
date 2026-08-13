@@ -219,3 +219,23 @@ msgstr "Removing stale file {0} of {1}: {2}"
 msgctxt "#30055"
 msgid "Export complete, but automatic cleanup was cancelled. New: {0}; retained/skipped: {1}; auto-pruned: {2}; stale remaining: {3}; cleanup skipped: {4}."
 msgstr "Export complete, but automatic cleanup was cancelled. New: {0}; retained/skipped: {1}; auto-pruned: {2}; stale remaining: {3}; cleanup skipped: {4}."
+
+msgctxt "#30056"
+msgid "Play one Google Drive file"
+msgstr "Play one Google Drive file"
+
+msgctxt "#30057"
+msgid "One-shot diagnostic playback for a Google Drive file link or file ID. The input is not saved or exported. Files outside the configured shared drive require confirmation."
+msgstr "One-shot diagnostic playback for a Google Drive file link or file ID. The input is not saved or exported. Files outside the configured shared drive require confirmation."
+
+msgctxt "#30058"
+msgid "Google Drive file link or file ID"
+msgstr "Google Drive file link or file ID"
+
+msgctxt "#30059"
+msgid "Outside configured shared drive"
+msgstr "Outside configured shared drive"
+
+msgctxt "#30060"
+msgid "This file is public or separately accessible to the service account, but is outside the configured shared drive. Play it once? It will not be added to browsing or snapshot exports."
+msgstr "This file is public or separately accessible to the service account, but is outside the configured shared drive. Play it once? It will not be added to browsing or snapshot exports."

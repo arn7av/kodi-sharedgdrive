@@ -11,6 +11,7 @@ _MAX_PAGES_PER_FOLDER = 10_000
 _MAX_ITEMS_PER_FOLDER = 1_000_000
 _MAX_FOLDERS_PER_EXPORT = 100_000
 _MAX_EXPORT_DEPTH = 256
+_MAX_DEBUG_REFERENCE_LENGTH = 4096
 
 
 class DriveClient:
@@ -154,36 +155,63 @@ class DriveClient:
 
     def get_playback_url(self, file_id, preflight=False):
         item = self.get_item(file_id)
-        if item.get("mimeType") == _FOLDER_MIME_TYPE or not _is_video(item):
-            raise DriveError("The requested item is not a playable video.")
-        capabilities = item.get("capabilities")
-        if not isinstance(capabilities, dict) or capabilities.get("canDownload") is not True:
-            raise DriveError("Downloading this video is not permitted.")
+        self._validate_playable(item)
+        return self._resolve_playback(file_id, item, preflight)
 
-        url = self._media_url(file_id)
-        if preflight:
-            self._probe_media(url)
-        authorization = urllib.parse.quote("Bearer {0}".format(self._token), safe="")
-        return "{0}|Authorization={1}".format(url, authorization), item
+    def get_debug_playback_url(self, file_id, allow_outside=False, preflight=False):
+        """Resolve one explicit Drive item, requiring an opt-in for boundary bypass."""
+        item = self._get_item_metadata(file_id)
+        self._validate_playable(item)
+        if item.get("driveId") != self._drive_id and not allow_outside:
+            raise AccessBoundaryError(
+                "The diagnostic item is outside the configured shared drive."
+            )
+        return self._resolve_playback(file_id, item, preflight)
 
     def get_item(self, item_id):
+        item = self._get_item_metadata(item_id)
+        self._enforce_boundary(item)
+        return item
+
+    def _get_item_metadata(self, item_id):
         item_id = _validate_id(item_id, "item")
         parameters = {
             "supportsAllDrives": "true",
             "fields": "id,name,mimeType,driveId,size,trashed,capabilities(canDownload)",
         }
         item = self._get_json(_with_query("{0}/{1}".format(_API_FILES, item_id), parameters))
-        self._enforce_boundary(item)
         if (
-            not isinstance(item.get("id"), str)
+            not isinstance(item, dict)
+            or not isinstance(item.get("id"), str)
+            or item.get("id") != item_id
             or not _ID_PATTERN.fullmatch(item["id"])
             or not isinstance(item.get("name"), str)
             or not isinstance(item.get("mimeType"), str)
         ):
             raise DriveError("Google Drive returned invalid file metadata.")
-        if item.get("trashed"):
-            raise DriveError("The requested Google Drive item is in the trash.")
+        drive_id = item.get("driveId")
+        if drive_id is not None and (
+            not isinstance(drive_id, str) or not _ID_PATTERN.fullmatch(drive_id)
+        ):
+            raise DriveError("Google Drive returned invalid file metadata.")
+        if item.get("trashed") is not False:
+            raise DriveError("Google Drive did not confirm that the requested item is outside the trash.")
         return item
+
+    @staticmethod
+    def _validate_playable(item):
+        if item.get("mimeType") == _FOLDER_MIME_TYPE or not _is_video(item):
+            raise DriveError("The requested item is not a playable video.")
+        capabilities = item.get("capabilities")
+        if not isinstance(capabilities, dict) or capabilities.get("canDownload") is not True:
+            raise DriveError("Downloading this video is not permitted.")
+
+    def _resolve_playback(self, file_id, item, preflight):
+        url = self._media_url(file_id)
+        if preflight:
+            self._probe_media(url)
+        authorization = urllib.parse.quote("Bearer {0}".format(self._token), safe="")
+        return "{0}|Authorization={1}".format(url, authorization), item
 
     def _get_json(self, url):
         try:
@@ -216,6 +244,45 @@ class DriveClient:
     def _enforce_boundary(self, item):
         if not isinstance(item, dict) or item.get("driveId") != self._drive_id:
             raise AccessBoundaryError("The requested item is outside the configured shared drive.")
+
+
+def parse_debug_file_reference(value):
+    """Extract a Drive file ID from a raw ID or recognized drive.google.com link."""
+    if not isinstance(value, str):
+        raise ConfigurationError("Enter a valid Google Drive file link or file ID.")
+    value = value.strip()
+    if not value or len(value) > _MAX_DEBUG_REFERENCE_LENGTH:
+        raise ConfigurationError("Enter a valid Google Drive file link or file ID.")
+    if _ID_PATTERN.fullmatch(value):
+        return value
+
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "drive.google.com"
+            or parsed.username
+            or parsed.password
+            or parsed.port not in (None, 443)
+        ):
+            raise ConfigurationError("Only Google Drive file links are supported.")
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 3 and parts[0:2] == ["file", "d"]:
+            return _validate_debug_file_id(parts[2])
+        if parsed.path.rstrip("/") in ("/open", "/uc"):
+            query = urllib.parse.parse_qs(parsed.query, max_num_fields=20)
+            identifiers = query.get("id", [])
+            if len(identifiers) == 1:
+                return _validate_debug_file_id(identifiers[0])
+    except (ValueError, UnicodeError) as exc:
+        raise ConfigurationError("Enter a valid Google Drive file link or file ID.") from exc
+    raise ConfigurationError("The Google Drive link does not identify a supported file.")
+
+
+def _validate_debug_file_id(value):
+    if not isinstance(value, str) or not _ID_PATTERN.fullmatch(value):
+        raise ConfigurationError("The Google Drive link contains an invalid file ID.")
+    return value
 
 
 def _validate_id(value, label):

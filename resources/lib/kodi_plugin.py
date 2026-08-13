@@ -1,6 +1,7 @@
 import sys
 import urllib.parse
 
+import xbmc
 import xbmcaddon
 import xbmcgui
 import xbmcplugin
@@ -8,8 +9,8 @@ import xbmcvfs
 
 from .auth import ServiceAccountTokenProvider
 from .config import KodiConfig
-from .drive import DriveClient, FOLDER_MIME_TYPE
-from .errors import PluginError
+from .drive import DriveClient, FOLDER_MIME_TYPE, parse_debug_file_reference
+from .errors import AccessBoundaryError, PluginError
 from .folder_cache import FolderResultCache
 from .http_client import HttpClient
 from .strm_exporter import SnapshotExporter, StaleExportManager
@@ -58,6 +59,8 @@ class KodiPlugin:
                 self._review_stale_exports()
             elif action == "play":
                 self._play()
+            elif action == "debug_play":
+                self._debug_play()
             elif action == "browse":
                 self._browse()
             else:
@@ -117,6 +120,46 @@ class KodiPlugin:
         list_item.setProperty("IsPlayable", "true")
         list_item.setMimeType(item.get("mimeType", "video/*"))
         xbmcplugin.setResolvedUrl(self._handle, True, list_item)
+
+    def _debug_play(self):
+        if not self._config.is_complete:
+            raise PluginError("The add-on is not configured.")
+        reference = xbmcgui.Dialog().input(
+            self._addon.getLocalizedString(30058),
+            type=xbmcgui.INPUT_ALPHANUM,
+        )
+        if not reference:
+            return
+
+        file_id = parse_debug_file_reference(reference)
+        drive = self._drive_client(
+            use_folder_cache=False,
+            minimum_token_remaining=_PLAYBACK_MINIMUM_TOKEN_SECONDS,
+        )
+        try:
+            playback_url, item = drive.get_debug_playback_url(
+                file_id,
+                preflight=self._config.playback_preflight_enabled,
+            )
+        except AccessBoundaryError:
+            if not xbmcgui.Dialog().yesno(
+                self._addon.getLocalizedString(30059),
+                self._addon.getLocalizedString(30060),
+            ):
+                return
+            drive = self._drive_client(
+                use_folder_cache=False,
+                minimum_token_remaining=_PLAYBACK_MINIMUM_TOKEN_SECONDS,
+            )
+            playback_url, item = drive.get_debug_playback_url(
+                file_id,
+                allow_outside=True,
+                preflight=self._config.playback_preflight_enabled,
+            )
+        list_item = xbmcgui.ListItem(label=item.get("name", ""), path=playback_url)
+        list_item.setProperty("IsPlayable", "true")
+        list_item.setMimeType(item.get("mimeType", "video/*"))
+        xbmc.Player().play(playback_url, list_item)
 
     def _import_credentials(self):
         path = xbmcgui.Dialog().browseSingle(

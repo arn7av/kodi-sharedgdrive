@@ -18,8 +18,9 @@
 - Read-only Drive OAuth scope.
 - One configured shared-drive ID; no drive discovery.
 - `corpora=drive` and `driveId=<configured ID>` on all folder listings.
-- Metadata validation of `driveId` before nested browsing and playback.
-- MIME-type and `canDownload` validation before playback.
+- Metadata validation of `driveId` before nested browsing and normal/`.strm` playback.
+- A separately invoked one-shot diagnostic exception that parses only recognized Drive links, performs fresh metadata checks, and requires confirmation outside the configured shared drive.
+- MIME-type and `canDownload` validation before every playback mode.
 - Strict Google HTTPS host allowlist and no followed HTTP redirects.
 - Optional one-byte media preflight that does not buffer media, maps bounded Google error bodies, and treats unfollowed redirects as inconclusive.
 - Explicit request timeouts, bounded JSON/error responses, page/item/folder limits, repeated-page-token detection, and bounded status-aware retries.
@@ -33,13 +34,15 @@
 
 - Kodi stores add-on settings in plaintext. A local process or add-on acting as the Kodi user can read the private key.
 - The profile contains a plaintext, short-lived access-token cache. A local process or add-on acting as the Kodi user can read it until it expires.
-- Kodi itself may log or expose a resolved playback URL containing a short-lived bearer token.
+- Kodi itself may log or expose a resolved playback URL containing a short-lived bearer token. After handoff, Kodi/libcurl controls media redirects and whether authorization headers are forwarded; eliminating that platform-dependent residual risk would require the intentionally excluded local proxy.
 - Anyone with the service-account private key can mint tokens using other scopes. Google-side access membership—not the scope string in this add-on—is the decisive boundary.
+- The one-shot diagnostic player can access a public item or any item separately shared with the service account. Such direct shares expand the credential's real Google-side authority beyond the configured shared drive, even though they remain excluded from browsing, `.strm` files, and export.
 - Playback requires at least 55 minutes of token lifetime at startup, but the token can still expire during very long playback. The design deliberately accepts this availability limitation rather than running a refresh proxy.
 - Optional media preflight adds a request and can identify only failures present at probe time. Direct Kodi playback may later encounter a quota, permission, redirect, or token failure that the add-on cannot translate without a proxy.
 - Folder-result caches contain short-lived filenames, file IDs, MIME types, and download capability metadata in the local profile.
 - Snapshot manifests and `.strm` URLs disclose Google file IDs and exported filenames to anyone who can read the selected export destination. They contain no credentials or tokens.
 - A malicious video container may target vulnerabilities in Kodi or its media libraries; this add-on does not inspect or transcode media.
+- The add-on does not persist diagnostic input, but Kodi's input controls, playback history, debug logging, crash reporting, or operating environment may still expose values or resolved bearer-token URLs outside the add-on's control.
 
 ## Reporting and response
 

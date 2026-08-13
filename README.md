@@ -11,6 +11,7 @@ Included:
 - Folder browsing.
 - Original video playback through the documented Google Drive API.
 - Optional media-access preflight for earlier quota/permission feedback.
+- One-shot diagnostic playback of an explicitly supplied Google Drive file link or file ID.
 - Short-lived access-token and bounded folder-result caching in the add-on profile.
 - Optional, user-triggered local `.strm` snapshot export and exporter-owned stale cleanup.
 - Credentials stored through Kodi's standard add-on settings.
@@ -36,7 +37,7 @@ The Google OAuth scope is `drive.readonly`, but OAuth scopes do not restrict a c
 5. Do not directly share unrelated Drive files or folders with it.
 6. Configure that shared drive's ID in the add-on.
 
-The add-on never enumerates shared drives. Every listed or played item's `driveId` must equal the configured ID. This is defense in depth; Google-side membership remains the real security boundary.
+The add-on never enumerates shared drives. Every browsed, exported, or normally played item's `driveId` must equal the configured ID. This is defense in depth; Google-side membership remains the real security boundary. The separately invoked one-shot diagnostic player is the only deliberate exception: it can inspect and play an explicitly supplied Drive file that is public or accessible to the service account, with confirmation when it is outside the configured shared drive.
 
 Credentials are imported into Kodi's normal per-add-on settings. Only `client_email` and `private_key` are retained; the original JSON is not stored. Kodi settings are plaintext and are readable by software running as the same OS/Kodi user. This is intentional and documented rather than disguised with a source-embedded encryption key.
 
@@ -86,6 +87,14 @@ Kodi receives the short-lived bearer token as an HTTP header in its resolved pla
 
 Only files whose MIME type starts with `video/` and whose `capabilities.canDownload` is true are shown as playable. The fresh metadata validation remains mandatory whether or not media preflight is enabled.
 
+### One-shot diagnostic playback
+
+**Play one Google Drive file** in Playback settings accepts a raw Drive file ID or a recognized `https://drive.google.com/file/d/...`, `/open?id=...`, or `/uc?id=...` link. The link is parsed locally only to extract a validated file ID; the pasted URL is never requested and never receives the bearer token. Arbitrary URLs, folders, embedded credentials, non-HTTPS links, other hosts, and signed `googleusercontent.com` URLs are rejected. Google links that require a separate `resourcekey` are not currently supported.
+
+The input remains in memory for that invocation: it is not stored in settings or caches, placed in a plugin URL, logged by the add-on, included in browsing, written to `.strm` files, or added to the export manifest. The add-on performs fresh Drive metadata checks and still requires a non-trashed, downloadable `video/*` item. If the item is outside the configured shared drive—or has no shared-drive ID—the user must explicitly confirm one-time playback. An in-drive diagnostic uses one fresh metadata check. When that check reports an outside-drive item, the add-on asks for confirmation, then reacquires a token meeting the normal startup-lifetime policy and refetches the metadata with an explicit one-shot boundary override before resolving playback. Media still goes directly from Google to Kodi. The initial URL is the fixed Google Drive API endpoint; Kodi controls subsequent media redirects and header handling, as it does for normal playback.
+
+This diagnostic path intentionally expands one-shot playback to anything public or separately accessible to the service account. It does not change normal browse, `.strm`, export, or playback boundaries. Directly sharing a file with the service account expands that credential's Google-side authority even if the add-on only exposes it through this diagnostic action.
+
 ## Snapshot `.strm` export
 
 Snapshot export is disabled by default. When enabled, **Export snapshot now** recursively enumerates the configured shared drive and mirrors its folder layout into a user-selected local or Kodi-writable destination. Each generated file contains only a plugin playback URL and Google file ID; it contains no bearer token, service-account key, or shared-drive ID.
@@ -131,4 +140,4 @@ The script excludes `.git`, tests, caches, unexpected files, symlinks, and devel
 
 `.github/workflows/ci.yml` runs the unit suite, Python/XML validation, and package integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
 
-`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.1.2` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.
+`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.2.0` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.

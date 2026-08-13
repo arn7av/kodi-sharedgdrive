@@ -1,10 +1,10 @@
 # Security and performance design review
 
-This review covers version 0.1.2 and the intended single-service-account, single-shared-drive use case.
+This review covers version 0.2.0 and the intended single-service-account, single-shared-drive use case plus its explicit one-shot diagnostic exception.
 
 ## Security conclusions
 
-No critical remote-code-execution, open SSRF, query-injection, or direct cross-drive authorization path was identified in the implemented browse/play flow.
+No critical remote-code-execution, open SSRF, or query-injection path was identified. Normal browse, `.strm`, and playback flows remain confined to the configured shared drive; the visible one-shot diagnostic action intentionally permits a user-confirmed item outside that drive.
 
 Primary controls:
 
@@ -12,8 +12,10 @@ Primary controls:
 - Exact HTTPS host allowlist for Python API requests; redirects are never followed.
 - One configured shared-drive ID and no drive discovery.
 - ID syntax validation, `corpora=drive`, and `driveId` constraints.
-- `driveId` metadata validation for listed folders/videos and fresh playback metadata.
-- Downloadable `video/*` filtering plus trash checks.
+- `driveId` metadata validation for listed folders/videos and fresh normal playback metadata.
+- Diagnostic references accept only validated raw IDs or recognized `drive.google.com` file links; arbitrary hosts and pasted-URL requests are rejected.
+- Diagnostic input is ephemeral and cannot enter plugin URLs, caches, browsing, `.strm` files, or manifests.
+- Downloadable `video/*` filtering plus trash checks in both normal and diagnostic playback.
 - Bounded token/folder caches with credential/drive fingerprints and atomic local replacement.
 - Bounded API JSON, pagination, item counts, folder traversal, repeated-page-token rejection, and fail-closed handling of Google's `incompleteSearch` signal.
 - No inbound server, background process, database, pickle, telemetry, or secret logging.
@@ -28,10 +30,11 @@ Residual security boundaries:
 1. Kodi settings contain the long-lived private key in plaintext. Anyone acting as the Kodi OS user can read it.
 2. Kodi receives a short-lived bearer token in the resolved pipe-header URL. Kodi, debug logs, crash reports, skins, or other local add-ons may expose it.
 3. Google-side service-account membership is the real drive boundary. The OAuth scope itself is not restricted to one shared drive.
-4. There is a metadata-to-media race: a file could move after metadata validation but before Kodi requests media. Restricting the service account to only the intended drive limits the impact.
-5. Generic Kodi VFS backends do not consistently provide no-follow, exclusive-create, locks, or atomic replacement. Export destinations must not be writable by untrusted concurrent actors.
-6. Exported filenames and file IDs are visible to readers of the export destination.
-7. Dependency trust is inherited from the Kodi repository supplying PyCryptodome.
+4. An explicitly supplied public or directly shared item can be played through the diagnostic action after warning. Direct sharing therefore expands the credential's actual authority beyond the configured drive, even though discovery/export remain bounded.
+5. There is a metadata-to-media race: a file could move after metadata validation but before Kodi requests media. Restricting the service account to only the intended drive limits the impact.
+6. Generic Kodi VFS backends do not consistently provide no-follow, exclusive-create, locks, or atomic replacement. Export destinations must not be writable by untrusted concurrent actors.
+7. Exported filenames and file IDs are visible to readers of the export destination.
+8. Dependency trust is inherited from the Kodi repository supplying PyCryptodome.
 
 ## Client/API performance
 
@@ -42,6 +45,7 @@ Normal cached interactive request cost:
 - Root folder miss: one request per 1,000 returned children.
 - Nested folder miss: one fresh folder metadata request plus paginated listing.
 - Playback startup: one fresh metadata request; token exchange only when required.
+- One-shot diagnostic startup: one metadata request for an in-drive item; an outside-drive result triggers confirmation followed by a fresh token-lifetime check and second metadata request with an explicit one-shot override; no folder-cache interaction.
 - With media preflight enabled: normally one additional one-byte range request and network round trip; a `401` causes one token refresh and retry.
 
 Optimizations:
@@ -77,6 +81,8 @@ Playback startup requires a token with at least 55 minutes remaining. This avoid
 
 The default-off media preflight uses `Range: bytes=0-0` rather than `HEAD`, because a range GET is more representative of actual media access. It closes successful responses without reading media and can surface a current Google 403 before resolution, at the cost of one request and startup latency. An unfollowed redirect is treated as inconclusive. A quota or permission change can still happen after the probe, so it is not a guarantee of successful playback.
 
+Diagnostic playback uses the same authenticated `alt=media` endpoint and direct Kodi transfer after fresh metadata validation. Outside-drive playback refetches metadata and re-establishes the 55-minute token policy immediately after confirmation. The pasted reference is never fetched; only an extracted Drive file ID reaches the fixed Google API endpoint. Public visibility does not trigger an anonymous or direct-link fallback. Resource-key-protected sharing links are intentionally unsupported rather than adding another credential-like input/header path.
+
 Target-device validation should cover:
 
 - Large MKV and MP4 playback.
@@ -85,6 +91,7 @@ Target-device validation should cover:
 - Playback crossing the one-hour token boundary.
 - Whether the target Kodi/libcurl follows any Google media redirect and how it handles Authorization across hosts.
 - SMB/NFS-hosted `.strm` libraries with direct Google media playback.
+- Settings-launched one-shot playback for an in-drive, public, and service-account-shared file.
 
 ## Snapshot/export performance
 
@@ -105,7 +112,8 @@ Target-device validation should cover:
 
 ## Operational recommendations
 
-- Keep the service account Viewer-only on exactly one shared drive.
+- Keep the service account Viewer-only on exactly one shared drive for normal operation.
+- Do not directly share unrelated items with it except when intentionally testing the diagnostic path; remove test shares afterward.
 - Do not enable domain-wide delegation or unrelated IAM roles.
 - Use a trusted local/export share destination.
 - Keep Kodi debug logs and backups protected.

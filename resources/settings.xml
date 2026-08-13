@@ -36,6 +36,11 @@
                     <default>false</default>
                     <control type="toggle"/>
                 </setting>
+                <setting id="debug_play_drive_file" type="action" label="30056" help="30057">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://plugin.video.sharedgdrive/?action=debug_play)</data>
+                    <control type="button" format="action"/>
+                </setting>
             </group>
             <group id="3" label="30021">
                 <setting id="snapshot_export_enabled" type="boolean" label="30022" help="30023">
