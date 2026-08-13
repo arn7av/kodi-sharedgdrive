@@ -1,185 +1,145 @@
 # Shared Google Drive for Kodi
 
-A deliberately small Kodi video add-on that uses one Google service account to browse and play original video files from one configured shared drive.
+A small Kodi video add-on for browsing and playing original video files from one Google shared drive through a dedicated service account.
 
-## Scope
+## Capabilities and limits
 
-Included:
+Supported:
 
-- One service account.
-- One fixed shared-drive ID.
-- Folder browsing.
-- Original video playback through the documented Google Drive API.
-- Optional media-access preflight for earlier quota/permission feedback.
-- One-shot diagnostic playback of an explicitly supplied Google Drive file link or file ID.
-- Short-lived access-token and bounded folder-result caching in the add-on profile.
-- Optional, user-triggered local `.strm` snapshot export and exporter-owned stale cleanup.
-- Credentials stored through Kodi's standard add-on settings.
+- One service account and one configured shared drive.
+- Folder browsing and original-file playback.
+- Short-lived token caching and a three-minute folder cache.
+- Optional one-file diagnostic playback by Drive file ID or recognized Drive URL.
+- Optional snapshot export of `.strm` files to a Kodi-writable location.
 
-Intentionally excluded:
+Not supported:
 
-- User OAuth and third-party sign-in servers.
-- Drive discovery, My Drive, Shared with me, and search.
-- Multiple accounts or account rotation.
-- Continuous synchronization, automatic library management, metadata, and watched-state tracking.
-- Google Photos, transcoding, alternate resolutions, downloads, and subtitles.
-- Databases, long-lived token stores, background services, and local HTTP servers.
-- Credential encryption or reversible obfuscation.
+- User OAuth, multiple accounts, drive discovery, My Drive, Shared with me, or search.
+- Metadata scraping, watched-state sync, transcoding, alternate resolutions, subtitles, or Google Photos.
+- Background synchronization, a database, or a local proxy/server.
 
-## Security model
+## Install
 
-The Google OAuth scope is `drive.readonly`, but OAuth scopes do not restrict a credential to a particular shared drive. The primary access boundary is Google-side membership:
+1. Enable installation from unknown sources in Kodi.
+2. In **Settings → File manager**, add `https://k.atx.sx/` as a **Web server directory (HTTPS)** source.
+3. Open **Add-ons → Install from zip file**, select that source, and install `repository.sharedgdrive.zip`.
+4. Open **Install from repository → Shared Google Drive Repository → Video add-ons → Shared Google Drive** and install the add-on.
 
-1. Create a dedicated service account.
-2. Do not grant it unrelated Google Cloud IAM roles.
-3. Do not enable domain-wide delegation.
-4. Add its `client_email` as a **Viewer** of exactly one shared drive.
-5. Do not directly share unrelated Drive files or folders with it.
-6. Configure that shared drive's ID in the add-on.
+Updates are then available through the installed repository. To force a refresh, open the repository's context menu and select **Check for updates**.
 
-The add-on never enumerates shared drives. Every browsed, exported, or normally played item's `driveId` must equal the configured ID. This is defense in depth; Google-side membership remains the real security boundary. The separately invoked one-shot diagnostic player is the only deliberate exception: it can inspect and play an explicitly supplied Drive file that is public or accessible to the service account, with confirmation when it is outside the configured shared drive.
+## Configure Google and Kodi
 
-Credentials are imported into Kodi's normal per-add-on settings. Only `client_email` and `private_key` are retained; the original JSON is not stored. Kodi settings are plaintext and are readable by software running as the same OS/Kodi user. This is intentional and documented rather than disguised with a source-embedded encryption key.
+1. Create or select a Google Cloud project and enable the Google Drive API.
+2. Create a dedicated service account with:
+   - no Google Cloud project roles;
+   - no domain-wide delegation;
+   - **Viewer** access to only the intended shared drive.
+3. Create a JSON key for the service account.
+4. Copy the shared-drive ID from its URL. For `https://drive.google.com/drive/folders/0ABExampleDriveId`, use `0ABExampleDriveId`.
+5. Open the add-on settings, enter the shared-drive ID, and select **Import service-account JSON**.
+6. Confirm Kodi shows **Credentials imported**, then remove the temporary copy of the JSON key.
 
-A short-lived access token and its expiration are cached in `special://profile/addon_data/plugin.video.sharedgdrive/access_token.json`. The cache is reused only when its credential fingerprint matches and more than five minutes remain before expiration. It is atomically replaced, uses owner-only permissions where the platform supports them, and is cleared when credentials are imported or removed. The token remains plaintext but normally expires within an hour.
+The importer retains only `client_email` and `private_key`. Kodi stores them as plaintext add-on settings, so other software running as the Kodi OS user can read them. See `SECURITY.md` for the full trust model and incident response.
 
-Interactive folder listings are cached in `folder_results.json` in the same profile. The cache is fixed at a three-minute TTL, at most 50 folders, and at most 2 MiB. It is isolated by a credential-plus-shared-drive fingerprint, atomically written, and revalidates cached items against the configured `driveId` before returning them. Cache hits do not rewrite the file. Snapshot exports bypass this cache and always enumerate Drive afresh. **Clear folder cache** in settings provides immediate refresh without clearing credentials or the access token.
+## Use
 
-The add-on makes HTTPS requests only to:
+Open **Add-ons → Video add-ons → Shared Google Drive**. Kodi shows folders plus downloadable files whose MIME type starts with `video/`.
 
-- `oauth2.googleapis.com`
-- `www.googleapis.com`
+To add it to the home screen's favourites:
 
-Redirects are disabled so an authorization header or JWT assertion cannot be redirected to another host. An optional media preflight accepts a Google redirect only as an inconclusive result and never follows it. The add-on does not log credentials, bearer tokens, API response bodies, filenames, or playback URLs.
+1. Highlight **Shared Google Drive** without opening it.
+2. Open the context menu (usually long-press **OK/Select** or press `C`).
+3. Select **Add to favourites**.
 
-## Install from the Kodi repository
+### Playback
 
-The release pipeline publishes a Kodi repository at `https://k.atx.sx/`. The repository contains one functional add-on, `plugin.video.sharedgdrive`, plus the small `repository.sharedgdrive` bootstrap that gives Kodi the update URLs.
+The add-on validates fresh Drive metadata, then hands Kodi this authenticated endpoint:
 
-On the TV, install the repository once:
+```text
+https://www.googleapis.com/drive/v3/files/<file-id>?alt=media&supportsAllDrives=true
+```
 
-1. In Kodi, enable installation from unknown sources.
-2. In **File manager**, add `https://k.atx.sx/` as a source.
-3. Choose **Add-ons → Install from zip file**, open that source, and install `repository.sharedgdrive.zip`.
-4. Choose **Install from repository → Shared Google Drive Repository → Video add-ons → Shared Google Drive**.
+Media bytes go directly from Google to Kodi; Python is not a media proxy. Playback starts with a token that has at least 55 minutes remaining. Very long playback or a seek/reconnect after token expiry may require restarting the item.
 
-Kodi can then discover subsequent releases through the installed repository. The repository ZIP also remains available from the same stable URL for additional Kodi devices.
+**Check media access before playback** is optional and disabled by default. It adds a one-byte range request that can expose a current permission or quota failure before Kodi starts playback, but it cannot guarantee later playback success.
 
-## Google setup
+### One-file diagnostic playback
 
-1. Create or select a Google Cloud project.
-2. Enable the Google Drive API.
-3. Create a dedicated service account with no project roles unless separately required.
-4. Create a JSON key for the service account.
-5. In Google Drive, add the service account email to the intended shared drive as **Viewer**.
-6. Copy the shared drive ID from its URL. For a URL such as:
+**Play one Google Drive file** accepts a raw file ID or these `drive.google.com` URL forms:
 
-   ```text
-   https://drive.google.com/drive/folders/0ABExampleSharedDriveId
-   ```
+- `/file/d/<id>`
+- `/open?id=<id>`
+- `/uc?id=<id>`
 
-   the ID is `0ABExampleSharedDriveId`.
-7. Install the add-on ZIP in Kodi.
-8. Open add-on settings and enter the shared drive ID.
-9. Select **Import service-account JSON** and choose the downloaded JSON key.
-10. Securely delete or archive the original key according to your operational policy.
+The add-on extracts the ID locally and never requests the pasted URL. The file must be public or accessible to the service account, be a downloadable `video/*` item, and be outside the trash. Playing an item outside the configured shared drive requires confirmation. Links that require a separate `resourcekey` are not supported; share the file directly with the service account instead.
 
-If the service-account key may have been exposed, disable/delete that key in Google Cloud, create a replacement, and import the replacement.
+### Snapshot `.strm` export
+
+Snapshot export is disabled by default. When enabled, **Export snapshot now** creates a corresponding `.strm` tree for downloadable videos in a selected local, SMB, or NFS destination. Empty and non-video-only folders are omitted; unsafe names are sanitized and collisions may receive an ID suffix. Each `.strm` file contains only a plugin playback URL and Google file ID.
+
+- Google Drive remains read-only; export writes only to the selected Kodi filesystem destination.
+- Re-export preserves correct files, creates missing files, and never overwrites unrelated or modified files.
+- Stale files are reported, not deleted, unless manual cleanup or **Automatically delete stale exported files** is explicitly used.
+- Cleanup deletes only exporter-owned files whose contents still exactly match the generated URL; it never deletes directories or Google Drive content.
+- Do not use a destination writable by untrusted users or services.
 
 ## Troubleshooting
 
-Expected configuration, authentication, permission, quota, and connection failures are shown as specific messages. **The operation failed unexpectedly** means a local Kodi/add-on exception occurred outside those expected paths; it does not by itself indicate that Google rejected the credentials.
+| Symptom | Check |
+|---|---|
+| Repository ZIP is not visible | Add `https://k.atx.sx/` as **Web server directory (HTTPS)**, not as a video source. |
+| Update is not visible | Run **Check for updates** on **Shared Google Drive Repository** and confirm `https://k.atx.sx/addons.xml` advertises the expected version. |
+| Add-on says it is not configured | Enter the shared-drive ID and import the JSON again; verify the **Credentials imported** notification appears. |
+| Google rejects authentication | Verify the key is active, the Drive API is enabled, and the TV's date/time is correct. |
+| Access is denied or the drive is empty | Add the service-account email as a Viewer of the shared drive itself. Only folders and downloadable `video/*` files are listed. |
+| Listing appears stale | Use **Clear folder cache**. Importing or removing credentials already clears both token and folder caches. |
+| **The operation failed unexpectedly** | Inspect Kodi's log for the add-on's error marker and adjacent Kodi/Python errors. This message indicates an unclassified exception, not necessarily a Google failure. |
 
-Use an evidence-first sequence:
-
-1. Reproduce the problem once and note the action and approximate time.
-2. Confirm Kodi reports the current add-on version and that the credential import showed **Credentials imported**. A failed import can leave the shared-drive ID saved without saving `client_email` or `private_key`.
-3. Inspect the end of Kodi's current log at `special://logpath/kodi.log`; the previous-session log is normally `special://logpath/kodi.old.log`.
-4. Search for `plugin.video.sharedgdrive`, `Shared Google Drive unexpected error`, `EXCEPTION`, and nearby `GetDirectory` or Python errors. The add-on's unexpected-error marker records only the action, exception class, and final Python source location; it intentionally omits exception text and local values.
-5. Separate local initialization/schema failures from network failures before changing Google permissions. For example, `error reading the default value of ...` followed by `Invalid setting type` is a Kodi settings-definition failure that occurs before any Google request. A normal Google API rejection should produce a specific add-on message instead.
-6. Retry after correcting the identified layer. Use **Clear folder cache** only for stale listings; credential import/removal already clears both token and folder caches.
-
-On the tested webOS Kodi package, the relevant paths are:
+Kodi exposes its logs as:
 
 ```text
-/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.log
-/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.old.log
-/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/addons/plugin.video.sharedgdrive/
-/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/userdata/addon_data/plugin.video.sharedgdrive/
+special://logpath/kodi.log
+special://logpath/kodi.old.log
 ```
 
-With a device named `tv` in the Rust `ares` tools, inspect recent relevant log lines from a development machine with:
+On the tested webOS package, useful paths are:
+
+```text
+Current log:     /media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.log
+Previous log:    /media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.old.log
+Installed add-on:/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/addons/plugin.video.sharedgdrive/
+Add-on profile:  /media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/userdata/addon_data/plugin.video.sharedgdrive/
+```
+
+With a Rust `ares` device named `tv`:
 
 ```sh
-~/.cargo/bin/ares-shell -d tv -r 'grep -n -Ei "plugin.video.sharedgdrive|Shared Google Drive unexpected error|EXCEPTION|GetDirectory" /media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.log | tail -n 120'
+# Confirm the installed version.
+~/.cargo/bin/ares-shell -d tv -r 'grep -m1 "<addon id=\"plugin.video.sharedgdrive\"" /media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/addons/plugin.video.sharedgdrive/addon.xml'
+
+# Find relevant failures in the current log.
+~/.cargo/bin/ares-shell -d tv -r 'grep -n -Ei "plugin.video.sharedgdrive|Shared Google Drive unexpected error|EXCEPTION|GetDirectory" /media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.log'
 ```
 
-These webOS paths are package/build-specific; prefer Kodi's `special://logpath` abstraction when working inside Kodi, and locate the equivalent profile/log directories rather than assuming the same absolute path on another platform. Before sharing diagnostics, follow the redaction guidance in `SECURITY.md`.
+Review log lines locally before sharing them; logs and the add-on profile can contain sensitive data. The marker's privacy limits and log-redaction guidance are in `SECURITY.md`.
 
-## Playback behavior
-
-Playback uses:
-
-```text
-GET https://www.googleapis.com/drive/v3/files/<file-id>?alt=media&supportsAllDrives=true
-```
-
-Kodi receives the short-lived bearer token as an HTTP header in its resolved playback URL. Playback startup refreshes cached tokens unless at least 55 minutes remain. The add-on does not run a refresh proxy, so very long playback sessions or seeks after token expiry may still require restarting playback. A proxy should only be added if target-device testing demonstrates that it is necessary.
-
-**Check media access before playback** is disabled by default. When enabled, the add-on sends an authenticated `GET` with `Range: bytes=0-0`, closes the response without buffering its body, and can display known quota/permission failures before resolving playback. This normally adds one Drive request and network round trip to startup; a rejected token is refreshed and the probe is retried once. A redirect is not followed and is treated as inconclusive so it cannot leak the authorization header. The check is advisory: Kodi's later direct request can still encounter a quota or permission change that Python cannot translate without proxying the media.
-
-Only files whose MIME type starts with `video/` and whose `capabilities.canDownload` is true are shown as playable. The fresh metadata validation remains mandatory whether or not media preflight is enabled.
-
-### One-shot diagnostic playback
-
-**Play one Google Drive file** in Playback settings accepts a raw Drive file ID or a recognized `https://drive.google.com/file/d/...`, `/open?id=...`, or `/uc?id=...` link. The link is parsed locally only to extract a validated file ID; the pasted URL is never requested and never receives the bearer token. Arbitrary URLs, folders, embedded credentials, non-HTTPS links, other hosts, and signed `googleusercontent.com` URLs are rejected. **Important — `resourcekey` limitation:** links requiring a separate `resourcekey` are unsupported. Share the file directly with the configured service-account email or move it into the configured shared drive, then use its file ID or a link that does not rely on a resource key.
-
-The input remains in memory for that invocation: it is not stored in settings or caches, placed in a plugin URL, logged by the add-on, included in browsing, written to `.strm` files, or added to the export manifest. The add-on performs fresh Drive metadata checks and still requires a non-trashed, downloadable `video/*` item. If the item is outside the configured shared drive—or has no shared-drive ID—the user must explicitly confirm one-time playback. An in-drive diagnostic uses one fresh metadata check. When that check reports an outside-drive item, the add-on asks for confirmation, then reacquires a token meeting the normal startup-lifetime policy and refetches the metadata with an explicit one-shot boundary override before resolving playback. Media still goes directly from Google to Kodi. The initial URL is the fixed Google Drive API endpoint; Kodi controls subsequent media redirects and header handling, as it does for normal playback.
-
-This diagnostic path intentionally expands one-shot playback to anything public or separately accessible to the service account. It does not change normal browse, `.strm`, export, or playback boundaries. Directly sharing a file with the service account expands that credential's Google-side authority even if the add-on only exposes it through this diagnostic action.
-
-## Snapshot `.strm` export
-
-Snapshot export is disabled by default. When enabled, **Export snapshot now** recursively enumerates the configured shared drive and mirrors its folder layout into a user-selected local or Kodi-writable destination. Each generated file contains only a plugin playback URL and Google file ID; it contains no bearer token, service-account key, or shared-drive ID.
-
-This feature does **not** require Google Drive write access. It writes `.strm` files to the selected Kodi filesystem destination, not into Google Drive. Keep the service account as a shared-drive **Viewer** and keep the `drive.readonly` scope.
-
-Re-export behavior:
-
-- Re-export is idempotent: existing exporter-owned files with the expected URL are retained without rewriting them.
-- Missing/new `.strm` files are created.
-- Unrelated or manually changed `.strm` files are skipped and never overwritten.
-- A completed re-export reports exporter-owned `.strm` files whose Google file is no longer present as `stale`; automatic deletion is off by default.
-- Stale ownership is retained only while the local file still contains the exact generated URL. Removed or manually changed files lose exporter ownership.
-- A cancelled, failed, or Google-flagged incomplete export does not perform stale classification or automatic pruning because its Drive enumeration is incomplete.
-- The manifest contains active and stale relative export paths plus Google file IDs, but no credentials or tokens.
-- **Review/remove stale exported files** lists up to 5,000 currently valid exporter-owned stale entries, allows multi-selection, asks for confirmation, and revalidates exact content immediately before deleting each selected `.strm`.
-- **Automatically delete stale exported files** is an opt-in alternative for larger sets. It runs only after a complete fresh enumeration and successful manifest save, bypasses only the review-dialog limit, and uses a freshly loaded validated manifest while revalidating active paths and exact generated content for each deletion. Cleanup can be cancelled and is checkpointed every 500 removals.
-- Neither cleanup mode deletes directories, unowned/modified files, nor anything in Google Drive.
-
-The destination must be writable by Kodi. If the destination is an SMB/NFS share, permissions are governed by the credentials and mount/share configuration Kodi uses for that destination—not by the Google service account. The destination must be trusted: generic Kodi VFS backends do not provide uniform no-follow, exclusive-create, locking, or fully atomic replacement guarantees against malicious concurrent writers. Embedded credentials in the destination URL are rejected, including percent-encoded credentials.
-
-## Dependency
-
-JWT assertions are signed with Kodi's maintained `script.module.pycryptodome` dependency. RSA signing is required by Google's service-account protocol; the add-on does not implement cryptographic primitives itself.
+The absolute webOS paths are package-specific. On other platforms, resolve Kodi's `special://logpath` and add-on profile locations instead of reusing them.
 
 ## Development
 
-The non-Kodi modules use only Python's standard library plus PyCryptodome for signing. Run the unit tests from the add-on directory:
+Run the tests from the repository root:
 
 ```sh
 python3 -m unittest discover -s tests -v
 ```
 
-Create the installable ZIP from the repository root:
+Build the deterministic add-on ZIP:
 
 ```sh
 python3 package.py
 ```
 
-The script always uses `plugin.video.sharedgdrive` as the ZIP's top-level directory, regardless of the Git checkout directory name. It excludes `.git`, tests, caches, unexpected files, symlinks, and development-only files.
-
-Build the complete static Kodi repository site after packaging:
+Build the static Kodi repository site:
 
 ```sh
 VERSION=$(python3 -c "import xml.etree.ElementTree as ET; print(ET.parse('addon.xml').getroot().attrib['version'])")
@@ -188,19 +148,18 @@ python3 build_repository.py \
   --output ../kodi-repository-site
 ```
 
-The detailed security/performance assessment is in `DESIGN_REVIEW.md`.
+Packaging, architecture, and performance details are in `DESIGN_REVIEW.md`.
 
-## Continuous integration and releases
+## CI and releases
 
-`.github/workflows/ci.yml` runs the unit suite, Python/XML validation, add-on packaging, Kodi repository generation, and ZIP integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
+`.github/workflows/ci.yml` runs tests, Python/XML validation, package generation, repository generation, and ZIP checks for pull requests and pushes to `main` on Python 3.9 and 3.13.
 
-`.github/workflows/release.yml` publishes a release when a semantic version tag in the form `v<major>.<minor>.<patch>` is pushed. The tag must exactly match the version in `addon.xml` and point to a commit contained in `main`. The workflow tests and builds the video and repository add-ons, preserves validated versioned ZIPs from prior GitHub Releases, creates build-provenance attestations using OIDC, deploys matching `addons.xml` metadata and ZIPs to GitHub Pages, and then publishes the ZIPs and SHA-256 checksums in a GitHub Release.
+A release tag must be `v<major>.<minor>.<patch>`, match `addon.xml`, and point to a commit in `main`. `.github/workflows/release.yml` preserves prior versioned archives, builds and attests release ZIPs, deploys Pages, and publishes the GitHub Release.
 
-Before the first release deployment:
+Pages deployments target the `kodi-repository` GitHub environment.
 
-1. In the GitHub repository's **Settings → Pages**, select **GitHub Actions** as the source.
-2. Set the Pages custom domain to `k.atx.sx`.
-3. At the DNS provider for `atx.sx`, create a `CNAME` record for `k` pointing directly to `arn7av.github.io` (not to a URL or repository path). If using Cloudflare DNS, keep it DNS-only while GitHub validates the domain and provisions HTTPS.
-4. After GitHub makes the option available, enable **Enforce HTTPS**.
+Release procedure:
 
-To release, bump the version in `addon.xml`, merge the change, then push a matching tag. Never reuse or move a published version tag. When the repository add-on's URLs or metadata change, also bump the version in `repository.sharedgdrive/addon.xml` so Kodi refreshes it.
+1. Bump `addon.xml` and merge/push the commit to `main`.
+2. If repository URLs or bootstrap metadata changed, also bump `repository.sharedgdrive/addon.xml`.
+3. Push a matching annotated tag. Never reuse or move a published tag.
