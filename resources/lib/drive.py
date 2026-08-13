@@ -85,7 +85,7 @@ class DriveClient:
             "pageSize": "1000",
             "orderBy": "folder,name_natural",
             "q": query,
-            "fields": "nextPageToken,files(id,name,mimeType,driveId,size,trashed,capabilities(canDownload))",
+            "fields": "nextPageToken,incompleteSearch,files(id,name,mimeType,driveId,size,trashed,capabilities(canDownload))",
         }
         items = []
         page_count = 0
@@ -98,6 +98,11 @@ class DriveClient:
             if page_count > _MAX_PAGES_PER_FOLDER:
                 raise DriveError("A Google Drive folder has too many result pages.")
             response = self._get_json(_with_query(_API_FILES, parameters))
+            incomplete_search = response.get("incompleteSearch")
+            if incomplete_search is True:
+                raise DriveError("Google Drive returned incomplete folder results; the operation was stopped safely.")
+            if incomplete_search is not None and not isinstance(incomplete_search, bool):
+                raise DriveError("Google Drive returned an invalid file list.")
             page_items = response.get("files", [])
             if not isinstance(page_items, list):
                 raise DriveError("Google Drive returned an invalid file list.")
@@ -147,7 +152,7 @@ class DriveClient:
                 items.append(item)
         return items
 
-    def get_playback_url(self, file_id):
+    def get_playback_url(self, file_id, preflight=False):
         item = self.get_item(file_id)
         if item.get("mimeType") == _FOLDER_MIME_TYPE or not _is_video(item):
             raise DriveError("The requested item is not a playable video.")
@@ -155,10 +160,9 @@ class DriveClient:
         if not isinstance(capabilities, dict) or capabilities.get("canDownload") is not True:
             raise DriveError("Downloading this video is not permitted.")
 
-        url = _with_query(
-            "{0}/{1}".format(_API_FILES, _validate_id(file_id, "file")),
-            {"alt": "media", "supportsAllDrives": "true"},
-        )
+        url = self._media_url(file_id)
+        if preflight:
+            self._probe_media(url)
         authorization = urllib.parse.quote("Bearer {0}".format(self._token), safe="")
         return "{0}|Authorization={1}".format(url, authorization), item
 
@@ -189,6 +193,22 @@ class DriveClient:
                 raise
             self._token = self._token_refresher()
             return self._http.get_json(url, headers=self._authorization_header())
+
+    def _probe_media(self, url):
+        try:
+            self._http.probe_media(url, headers=self._authorization_header())
+        except UnauthorizedError:
+            if not self._token_refresher:
+                raise
+            self._token = self._token_refresher()
+            self._http.probe_media(url, headers=self._authorization_header())
+
+    @staticmethod
+    def _media_url(file_id):
+        return _with_query(
+            "{0}/{1}".format(_API_FILES, _validate_id(file_id, "file")),
+            {"alt": "media", "supportsAllDrives": "true"},
+        )
 
     def _authorization_header(self):
         return {"Authorization": "Bearer {0}".format(self._token)}

@@ -53,6 +53,38 @@ class HttpClient:
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         return self._request_json("POST", url, headers=headers, body=body, auth_request=True)
 
+    def probe_media(self, url, headers=None):
+        """Test media access with a one-byte GET without following redirects."""
+        self._validate_url(url)
+        request_headers = dict(headers or {})
+        request_headers["Range"] = "bytes=0-0"
+        request = urllib.request.Request(url, headers=request_headers, method="GET")
+
+        try:
+            with self._opener.open(request, timeout=self._timeout) as response:
+                status = response.getcode()
+                if status not in (200, 206):
+                    raise DriveError(
+                        "Google Drive returned unexpected media status {0}.".format(status)
+                    )
+            return
+        except urllib.error.HTTPError as exc:
+            if 300 <= exc.code < 400:
+                exc.close()
+                return
+            try:
+                if exc.code == 401:
+                    raise UnauthorizedError("The Google access token was rejected.") from exc
+                if exc.code == 403:
+                    raise DriveError(_describe_403(exc) or _GENERIC_403_MESSAGE) from exc
+                if exc.code == 404:
+                    raise DriveError("The requested Google Drive resource was not found.") from exc
+                raise DriveError("Google Drive returned HTTP status {0}.".format(exc.code)) from exc
+            finally:
+                exc.close()
+        except (urllib.error.URLError, socket.timeout, TimeoutError) as exc:
+            raise DriveError("The connection to Google timed out or failed.") from exc
+
     def _request_json(self, method, url, headers=None, body=None, auth_request=False):
         self._validate_url(url)
         request = urllib.request.Request(url, data=body, headers=headers or {}, method=method)

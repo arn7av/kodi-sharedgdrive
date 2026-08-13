@@ -2,6 +2,7 @@ import json
 import pathlib
 import sys
 import unittest
+import xml.etree.ElementTree as ElementTree
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -83,11 +84,21 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(config.import_credentials(""))
         self.assertEqual({}, addon.values)
 
-    def test_snapshot_export_is_disabled_by_default(self):
+    def test_optional_performance_features_are_disabled_by_default(self):
         config = KodiConfig(FakeAddon(), FakeVfs({}))
 
+        self.assertFalse(config.playback_preflight_enabled)
         self.assertFalse(config.snapshot_export_enabled)
+        self.assertFalse(config.snapshot_auto_prune)
         self.assertEqual("", config.snapshot_export_folder)
+
+        settings = ElementTree.parse(ROOT / "resources/settings.xml")
+        defaults = {
+            setting.attrib["id"]: setting.findtext("default")
+            for setting in settings.findall(".//setting")
+        }
+        self.assertEqual("false", defaults["playback_preflight_enabled"])
+        self.assertEqual("false", defaults["snapshot_auto_prune"])
 
     def test_rejects_export_folder_with_embedded_credentials_before_storage(self):
         addon = FakeAddon()

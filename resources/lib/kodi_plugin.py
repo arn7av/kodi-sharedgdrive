@@ -109,7 +109,10 @@ class KodiPlugin:
         file_id = self._params.get("file_id", "")
         playback_url, item = self._drive_client(
             minimum_token_remaining=_PLAYBACK_MINIMUM_TOKEN_SECONDS
-        ).get_playback_url(file_id)
+        ).get_playback_url(
+            file_id,
+            preflight=self._config.playback_preflight_enabled,
+        )
         list_item = xbmcgui.ListItem(label=item.get("name", ""), path=playback_url)
         list_item.setProperty("IsPlayable", "true")
         list_item.setMimeType(item.get("mimeType", "video/*"))
@@ -176,9 +179,13 @@ class KodiPlugin:
         if not self._config.snapshot_export_folder:
             raise PluginError("Select a snapshot export folder first.")
 
+        auto_prune = self._config.snapshot_auto_prune
+        confirmation_message = self._addon.getLocalizedString(
+            30053 if auto_prune else 30046
+        )
         if not xbmcgui.Dialog().yesno(
             self._addon.getLocalizedString(30045),
-            self._addon.getLocalizedString(30046),
+            confirmation_message,
         ):
             return
 
@@ -200,12 +207,26 @@ class KodiPlugin:
                     self._addon.getLocalizedString(30031).format(count, name),
                 ),
                 cancelled=progress.iscanceled,
+                auto_prune=auto_prune,
+                prune_progress=lambda current, total, path: progress.update(
+                    int(current * 100 / max(total, 1)),
+                    self._addon.getLocalizedString(30054).format(current, total, path),
+                ),
             )
         finally:
             progress.close()
 
         if result.get("cancelled"):
             message = self._addon.getLocalizedString(30032)
+        elif auto_prune:
+            result_string = 30055 if result.get("cleanup_cancelled") else 30052
+            message = self._addon.getLocalizedString(result_string).format(
+                result["written"],
+                result["skipped"],
+                result.get("auto_pruned", 0),
+                result["stale"],
+                result.get("cleanup_skipped", 0),
+            )
         else:
             message = self._addon.getLocalizedString(30033).format(
                 result["written"],

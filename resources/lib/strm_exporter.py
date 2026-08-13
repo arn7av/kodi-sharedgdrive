@@ -37,7 +37,13 @@ class SnapshotExporter:
             drive.shared_drive_id,
         )
 
-    def export(self, progress=None, cancelled=None):
+    def export(
+        self,
+        progress=None,
+        cancelled=None,
+        auto_prune=False,
+        prune_progress=None,
+    ):
         if not self._vfs.exists(self._destination) and not self._vfs.mkdirs(self._destination):
             raise DriveError("The snapshot export folder could not be created.")
 
@@ -139,6 +145,22 @@ class SnapshotExporter:
         except Exception:
             self._save_partial_best_effort(owned_files, new_owned_files)
             raise
+
+        if auto_prune:
+            cleanup = StaleExportManager(
+                self._vfs,
+                self._destination,
+                self._plugin_base_url,
+                self._drive.shared_drive_id,
+            ).remove_all_owned_stale(
+                progress=prune_progress,
+                cancelled=cancelled,
+            )
+            result["auto_pruned"] = cleanup["removed"]
+            result["cleanup_skipped"] = cleanup["skipped"]
+            result["stale"] = cleanup["remaining"]
+            if cleanup["cancelled"]:
+                result["cleanup_cancelled"] = True
         return result
 
     def _save_partial(self, owned_files, new_owned_files):
@@ -246,13 +268,30 @@ class StaleExportManager:
         document = self._manifest.load()
         if document.get("drive_id") != self._drive_id:
             return {"removed": 0, "skipped": len(requested)}
+        result = self._remove(document, requested, progress, cancelled)
+        return {"removed": result["removed"], "skipped": result["skipped"]}
 
+    def remove_all_owned_stale(self, progress=None, cancelled=None):
+        """Remove validated exporter-owned stale files without the review-dialog cap."""
+        document = self._manifest.load()
+        if document.get("drive_id") != self._drive_id:
+            return {"removed": 0, "skipped": 0, "remaining": 0, "cancelled": False}
+        return self._remove(
+            document,
+            tuple(document.get("stale_files", {})),
+            progress,
+            cancelled,
+        )
+
+    def _remove(self, document, requested, progress, cancelled):
         stale_files = dict(document.get("stale_files", {}))
         removed = 0
         skipped = 0
+        was_cancelled = False
         active_folded = {path.casefold() for path in document.get("files", {})}
         for index, relative_path in enumerate(requested, start=1):
             if cancelled and cancelled():
+                was_cancelled = True
                 break
             if progress:
                 progress(index, len(requested), relative_path)
@@ -283,7 +322,12 @@ class StaleExportManager:
 
         document["stale_files"] = stale_files
         self._manifest.save(document)
-        return {"removed": removed, "skipped": skipped}
+        return {
+            "removed": removed,
+            "skipped": skipped,
+            "remaining": len(stale_files),
+            "cancelled": was_cancelled,
+        }
 
 
 class _ManifestStore:

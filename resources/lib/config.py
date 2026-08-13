@@ -26,8 +26,16 @@ class KodiConfig:
         return bool(self.shared_drive_id and self.client_email and self.private_key)
 
     @property
+    def playback_preflight_enabled(self):
+        return self._addon.getSettingBool("playback_preflight_enabled")
+
+    @property
     def snapshot_export_enabled(self):
         return self._addon.getSettingBool("snapshot_export_enabled")
+
+    @property
+    def snapshot_auto_prune(self):
+        return self._addon.getSettingBool("snapshot_auto_prune")
 
     @property
     def snapshot_export_folder(self):

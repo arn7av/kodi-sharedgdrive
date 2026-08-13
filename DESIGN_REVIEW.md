@@ -1,6 +1,6 @@
 # Security and performance design review
 
-This review covers version 0.1.1 and the intended single-service-account, single-shared-drive use case.
+This review covers version 0.1.2 and the intended single-service-account, single-shared-drive use case.
 
 ## Security conclusions
 
@@ -9,18 +9,19 @@ No critical remote-code-execution, open SSRF, query-injection, or direct cross-d
 Primary controls:
 
 - Dedicated service-account flow with fixed RS256 JWT audience and `drive.readonly` scope.
-- Exact HTTPS host allowlist for Python API requests; redirects disabled.
+- Exact HTTPS host allowlist for Python API requests; redirects are never followed.
 - One configured shared-drive ID and no drive discovery.
 - ID syntax validation, `corpora=drive`, and `driveId` constraints.
 - `driveId` metadata validation for listed folders/videos and fresh playback metadata.
 - Downloadable `video/*` filtering plus trash checks.
 - Bounded token/folder caches with credential/drive fingerprints and atomic local replacement.
-- Bounded API JSON, pagination, item counts, folder traversal, and repeated-page-token rejection.
+- Bounded API JSON, pagination, item counts, folder traversal, repeated-page-token rejection, and fail-closed handling of Google's `incompleteSearch` signal.
 - No inbound server, background process, database, pickle, telemetry, or secret logging.
 - Fail-closed package allowlist and symlink rejection.
 - Snapshot manifests validate version, drive ID, file IDs, relative `.strm` paths, count, and size.
 - Snapshot writes use randomized sibling temporary files and rollback backups.
-- Stale removal is explicit, selected, confirmed, exact-content revalidated, and file-only.
+- Manual stale removal is selected, confirmed, exact-content revalidated, and file-only.
+- Optional auto-prune can run only after a complete fresh export and successful final manifest save; it retains manifest/path/content validation, active-path protection, cancellation, and checkpointing.
 
 Residual security boundaries:
 
@@ -41,6 +42,7 @@ Normal cached interactive request cost:
 - Root folder miss: one request per 1,000 returned children.
 - Nested folder miss: one fresh folder metadata request plus paginated listing.
 - Playback startup: one fresh metadata request; token exchange only when required.
+- With media preflight enabled: normally one additional one-byte range request and network round trip; a `401` causes one token refresh and retry.
 
 Optimizations:
 
@@ -52,6 +54,7 @@ Optimizations:
 - Pagination uses `pageSize=1000` and detects invalid/repeated page tokens.
 - Optional cache write failure does not fail successful online operations.
 - One API request receiving `401` refreshes the service-account token and retries once; future requests can repeat this process if a long export crosses another token lifetime.
+- Optional media preflight does not read a successful response body, does not follow redirects, and maps known bounded 403 error responses before Kodi startup.
 
 Tradeoffs:
 
@@ -71,6 +74,8 @@ https://www.googleapis.com/drive/v3/files/<id>?alt=media&supportsAllDrives=true
 with an Authorization header. Therefore Python is not a throughput, buffering, or range-seeking bottleneck. Kodi/libcurl controls connection reuse, `Range` requests, media buffering, timeouts, and reconnect behavior.
 
 Playback startup requires a token with at least 55 minutes remaining. This avoids starting most films with an almost-expired token, but a static resolved header still cannot refresh during multi-hour playback. A seek/reconnect after expiry may fail. Solving that requires a refresh-capable local proxy, which is intentionally excluded because it adds an inbound service, concurrency/state management, and a larger security surface.
+
+The default-off media preflight uses `Range: bytes=0-0` rather than `HEAD`, because a range GET is more representative of actual media access. It closes successful responses without reading media and can surface a current Google 403 before resolution, at the cost of one request and startup latency. An unfollowed redirect is treated as inconclusive. A quota or permission change can still happen after the probe, so it is not a guarantee of successful playback.
 
 Target-device validation should cover:
 
@@ -92,7 +97,11 @@ Target-device validation should cover:
 - Partial ownership is checkpointed every 5,000 new writes and on handled exceptions/cancellation.
 - Manifest writes are skipped when unchanged.
 - Manifest size and entry counts are bounded.
-- Stale classification happens only after a complete fresh enumeration.
+- Stale classification happens only after a complete fresh enumeration; Google's explicit `incompleteSearch` signal aborts the operation.
+- Default-off auto-prune begins only after stale classification and successful final manifest storage.
+- Auto-prune bypasses the 5,000-entry GUI review cap, not the 100,000-entry manifest limit or any ownership checks.
+- Every stale file is exact-content revalidated immediately before deletion; cleanup is cancellable and persists progress every 500 successful removals.
+- No cleanup path deletes directories or Google Drive content.
 
 ## Operational recommendations
 
@@ -101,5 +110,5 @@ Target-device validation should cover:
 - Use a trusted local/export share destination.
 - Keep Kodi debug logs and backups protected.
 - Rotate the service-account key after suspected exposure.
-- Run snapshot export manually and review stale files before removal.
+- Run snapshot export manually and review stale files before removal; enable auto-prune only when unattended cleanup is preferred and the export destination is trusted.
 - Test long playback and seeking on the exact Kodi device/build before relying on unattended multi-hour playback.

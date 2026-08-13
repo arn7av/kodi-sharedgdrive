@@ -183,3 +183,39 @@ msgstr "Run snapshot export"
 msgctxt "#30046"
 msgid "Recursively enumerate the shared drive and write .strm files to the configured destination now?"
 msgstr "Recursively enumerate the shared drive and write .strm files to the configured destination now?"
+
+msgctxt "#30047"
+msgid "Playback"
+msgstr "Playback"
+
+msgctxt "#30048"
+msgid "Check media access before playback"
+msgstr "Check media access before playback"
+
+msgctxt "#30049"
+msgid "Disabled by default. Performs a one-byte request to the Google media endpoint before playback so quota and permission errors can be shown by the add-on. Normally adds one request and some startup latency; a rejected token is refreshed and retried once."
+msgstr "Disabled by default. Performs a one-byte request to the Google media endpoint before playback so quota and permission errors can be shown by the add-on. Normally adds one request and some startup latency; a rejected token is refreshed and retried once."
+
+msgctxt "#30050"
+msgid "Automatically delete stale exported files"
+msgstr "Automatically delete stale exported files"
+
+msgctxt "#30051"
+msgid "Disabled by default. After a complete fresh export, deletes stale .strm files only when the validated manifest and exact generated contents prove add-on ownership. Never deletes folders or Google Drive files."
+msgstr "Disabled by default. After a complete fresh export, deletes stale .strm files only when the validated manifest and exact generated contents prove add-on ownership. Never deletes folders or Google Drive files."
+
+msgctxt "#30052"
+msgid "Export complete. New: {0}; retained/skipped: {1}; auto-pruned: {2}; stale remaining: {3}; cleanup skipped: {4}."
+msgstr "Export complete. New: {0}; retained/skipped: {1}; auto-pruned: {2}; stale remaining: {3}; cleanup skipped: {4}."
+
+msgctxt "#30053"
+msgid "Recursively enumerate the shared drive and write missing .strm files now? Auto-prune is enabled: stale exporter-owned .strm files will be permanently deleted after a complete scan."
+msgstr "Recursively enumerate the shared drive and write missing .strm files now? Auto-prune is enabled: stale exporter-owned .strm files will be permanently deleted after a complete scan."
+
+msgctxt "#30054"
+msgid "Removing stale file {0} of {1}: {2}"
+msgstr "Removing stale file {0} of {1}: {2}"
+
+msgctxt "#30055"
+msgid "Export complete, but automatic cleanup was cancelled. New: {0}; retained/skipped: {1}; auto-pruned: {2}; stale remaining: {3}; cleanup skipped: {4}."
+msgstr "Export complete, but automatic cleanup was cancelled. New: {0}; retained/skipped: {1}; auto-pruned: {2}; stale remaining: {3}; cleanup skipped: {4}."

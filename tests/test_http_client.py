@@ -36,6 +36,37 @@ class _RaisingOpener:
         raise self._exc
 
 
+class _ProbeResponse:
+    def __init__(self, status):
+        self.status = status
+        self.read_calls = 0
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.closed = True
+        return False
+
+    def getcode(self):
+        return self.status
+
+    def read(self, size=-1):
+        self.read_calls += 1
+        raise AssertionError("media preflight must not read the response body")
+
+
+class _RecordingOpener:
+    def __init__(self, response):
+        self.response = response
+        self.requests = []
+
+    def open(self, request, timeout=None):
+        self.requests.append(request)
+        return self.response
+
+
 class HttpClientTests(unittest.TestCase):
     def test_allows_expected_google_hosts(self):
         HttpClient._validate_url("https://oauth2.googleapis.com/token")
@@ -52,6 +83,65 @@ class HttpClientTests(unittest.TestCase):
         for url in invalid_urls:
             with self.subTest(url=url), self.assertRaises(ValueError):
                 HttpClient._validate_url(url)
+
+    def test_media_probe_sends_one_byte_range_and_does_not_read_body(self):
+        for status in (200, 206):
+            with self.subTest(status=status):
+                response = _ProbeResponse(status)
+                opener = _RecordingOpener(response)
+                client = HttpClient(attempts=1, opener=opener)
+
+                client.probe_media(
+                    "https://www.googleapis.com/drive/v3/files/abc?alt=media",
+                    headers={"Authorization": "Bearer token"},
+                )
+
+                self.assertEqual("bytes=0-0", opener.requests[0].get_header("Range"))
+                self.assertEqual("Bearer token", opener.requests[0].get_header("Authorization"))
+                self.assertEqual(0, response.read_calls)
+                self.assertTrue(response.closed)
+
+    def test_media_probe_treats_google_redirect_as_inconclusive_success(self):
+        redirect = urllib.error.HTTPError(
+            "https://www.googleapis.com/drive/v3/files/abc?alt=media",
+            302,
+            "Found",
+            Message(),
+            io.BytesIO(b"must not be read"),
+        )
+        client = HttpClient(attempts=1, opener=_RaisingOpener(redirect))
+
+        client.probe_media("https://www.googleapis.com/drive/v3/files/abc?alt=media")
+
+        self.assertTrue(redirect.fp is None or redirect.fp.closed)
+
+    def test_media_probe_does_not_retry_transient_errors(self):
+        transient = urllib.error.HTTPError(
+            "https://www.googleapis.com/drive/v3/files/abc?alt=media",
+            503,
+            "Unavailable",
+            Message(),
+            io.BytesIO(b""),
+        )
+        opener = _RaisingOpener(transient)
+        client = HttpClient(attempts=3, opener=opener)
+
+        with self.assertRaises(DriveError):
+            client.probe_media("https://www.googleapis.com/drive/v3/files/abc?alt=media")
+
+        self.assertEqual(1, opener.calls)
+
+    def test_media_probe_maps_403_without_retry(self):
+        opener = _RaisingOpener(
+            _http_403({"error": {"errors": [{"reason": "downloadQuotaExceeded"}]}})
+        )
+        client = HttpClient(attempts=3, opener=opener)
+
+        with self.assertRaises(DriveError) as context:
+            client.probe_media("https://www.googleapis.com/drive/v3/files/abc?alt=media")
+
+        self.assertIn("download quota", str(context.exception))
+        self.assertEqual(1, opener.calls)
 
     def test_403_with_known_reason_uses_specific_message_without_retry(self):
         opener = _RaisingOpener(

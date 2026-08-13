@@ -25,10 +25,21 @@ class FakeHttp:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = []
+        self.probe_calls = []
 
     def get_json(self, url, headers=None):
         self.calls.append((url, headers))
         return self.responses.pop(0)
+
+    def probe_media(self, url, headers=None):
+        self.probe_calls.append((url, headers))
+
+
+class RefreshingProbeHttp(FakeHttp):
+    def probe_media(self, url, headers=None):
+        self.probe_calls.append((url, headers))
+        if len(self.probe_calls) == 1:
+            raise UnauthorizedError("rejected")
 
 
 class FakeFolderCache:
@@ -94,6 +105,17 @@ class DriveClientTests(unittest.TestCase):
 
         with self.assertRaises(AccessBoundaryError):
             client.list_folder("drive_1")
+
+    def test_rejects_google_flagged_incomplete_folder_results(self):
+        http = FakeHttp([{"incompleteSearch": True, "files": []}])
+        client = DriveClient(http, "token", "drive_1")
+
+        with self.assertRaises(DriveError) as context:
+            client.list_folder("drive_1")
+
+        self.assertIn("incomplete", str(context.exception))
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(http.calls[0][0]).query)
+        self.assertIn("incompleteSearch", query["fields"][0])
 
     def test_stores_successful_interactive_listing_in_cache(self):
         cache = FakeFolderCache()
@@ -178,6 +200,75 @@ class DriveClientTests(unittest.TestCase):
         self.assertIn("alt=media", url)
         self.assertIn("supportsAllDrives=true", url)
         self.assertTrue(url.endswith("|Authorization=Bearer%20token%20with%20space"))
+
+    def test_optional_media_preflight_uses_media_url_and_authorization(self):
+        http = FakeHttp(
+            [
+                {
+                    "id": "video_1",
+                    "name": "Movie",
+                    "mimeType": "video/mp4",
+                    "driveId": "drive_1",
+                    "trashed": False,
+                    "capabilities": {"canDownload": True},
+                }
+            ]
+        )
+        client = DriveClient(http, "token", "drive_1")
+
+        client.get_playback_url("video_1", preflight=True)
+
+        self.assertEqual(1, len(http.probe_calls))
+        self.assertIn("/files/video_1?", http.probe_calls[0][0])
+        self.assertIn("alt=media", http.probe_calls[0][0])
+        self.assertEqual("Bearer token", http.probe_calls[0][1]["Authorization"])
+
+    def test_media_preflight_refreshes_rejected_token_once(self):
+        http = RefreshingProbeHttp(
+            [
+                {
+                    "id": "video_1",
+                    "name": "Movie",
+                    "mimeType": "video/mp4",
+                    "driveId": "drive_1",
+                    "trashed": False,
+                    "capabilities": {"canDownload": True},
+                }
+            ]
+        )
+        refresh_calls = []
+        client = DriveClient(
+            http,
+            "old-token",
+            "drive_1",
+            token_refresher=lambda: refresh_calls.append(True) or "new-token",
+        )
+
+        playback_url, _ = client.get_playback_url("video_1", preflight=True)
+
+        self.assertEqual(
+            ["Bearer old-token", "Bearer new-token"],
+            [headers["Authorization"] for _, headers in http.probe_calls],
+        )
+        self.assertEqual([True], refresh_calls)
+        self.assertTrue(playback_url.endswith("|Authorization=Bearer%20new-token"))
+
+    def test_playback_does_not_probe_media_by_default(self):
+        http = FakeHttp(
+            [
+                {
+                    "id": "video_1",
+                    "name": "Movie",
+                    "mimeType": "video/mp4",
+                    "driveId": "drive_1",
+                    "trashed": False,
+                    "capabilities": {"canDownload": True},
+                }
+            ]
+        )
+        DriveClient(http, "token", "drive_1").get_playback_url("video_1")
+
+        self.assertEqual([], http.probe_calls)
 
     def test_rejects_non_video_playback(self):
         http = FakeHttp(

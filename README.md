@@ -10,8 +10,9 @@ Included:
 - One fixed shared-drive ID.
 - Folder browsing.
 - Original video playback through the documented Google Drive API.
+- Optional media-access preflight for earlier quota/permission feedback.
 - Short-lived access-token and bounded folder-result caching in the add-on profile.
-- Optional, user-triggered local `.strm` snapshot export.
+- Optional, user-triggered local `.strm` snapshot export and exporter-owned stale cleanup.
 - Credentials stored through Kodi's standard add-on settings.
 
 Intentionally excluded:
@@ -48,7 +49,7 @@ The add-on makes HTTPS requests only to:
 - `oauth2.googleapis.com`
 - `www.googleapis.com`
 
-Redirects are disabled so an authorization header or JWT assertion cannot be redirected to another host. The add-on does not log credentials, bearer tokens, API response bodies, filenames, or playback URLs.
+Redirects are disabled so an authorization header or JWT assertion cannot be redirected to another host. An optional media preflight accepts a Google redirect only as an inconclusive result and never follows it. The add-on does not log credentials, bearer tokens, API response bodies, filenames, or playback URLs.
 
 ## Google setup
 
@@ -81,7 +82,9 @@ GET https://www.googleapis.com/drive/v3/files/<file-id>?alt=media&supportsAllDri
 
 Kodi receives the short-lived bearer token as an HTTP header in its resolved playback URL. Playback startup refreshes cached tokens unless at least 55 minutes remain. The add-on does not run a refresh proxy, so very long playback sessions or seeks after token expiry may still require restarting playback. A proxy should only be added if target-device testing demonstrates that it is necessary.
 
-Only files whose MIME type starts with `video/` and whose `capabilities.canDownload` is true are shown as playable.
+**Check media access before playback** is disabled by default. When enabled, the add-on sends an authenticated `GET` with `Range: bytes=0-0`, closes the response without buffering its body, and can display known quota/permission failures before resolving playback. This normally adds one Drive request and network round trip to startup; a rejected token is refreshed and the probe is retried once. A redirect is not followed and is treated as inconclusive so it cannot leak the authorization header. The check is advisory: Kodi's later direct request can still encounter a quota or permission change that Python cannot translate without proxying the media.
+
+Only files whose MIME type starts with `video/` and whose `capabilities.canDownload` is true are shown as playable. The fresh metadata validation remains mandatory whether or not media preflight is enabled.
 
 ## Snapshot `.strm` export
 
@@ -94,12 +97,13 @@ Re-export behavior:
 - Re-export is idempotent: existing exporter-owned files with the expected URL are retained without rewriting them.
 - Missing/new `.strm` files are created.
 - Unrelated or manually changed `.strm` files are skipped and never overwritten.
-- A completed re-export reports exporter-owned `.strm` files whose Google file is no longer present as `stale`; it does not delete them.
+- A completed re-export reports exporter-owned `.strm` files whose Google file is no longer present as `stale`; automatic deletion is off by default.
 - Stale ownership is retained only while the local file still contains the exact generated URL. Removed or manually changed files lose exporter ownership.
-- A cancelled export does not perform stale classification because its Drive enumeration is incomplete.
+- A cancelled, failed, or Google-flagged incomplete export does not perform stale classification or automatic pruning because its Drive enumeration is incomplete.
 - The manifest contains active and stale relative export paths plus Google file IDs, but no credentials or tokens.
-- **Review/remove stale exported files** lists only currently valid exporter-owned stale entries, allows multi-selection, asks for confirmation, and revalidates exact content immediately before deleting each selected `.strm`.
-- No directories are deleted by stale cleanup.
+- **Review/remove stale exported files** lists up to 5,000 currently valid exporter-owned stale entries, allows multi-selection, asks for confirmation, and revalidates exact content immediately before deleting each selected `.strm`.
+- **Automatically delete stale exported files** is an opt-in alternative for larger sets. It runs only after a complete fresh enumeration and successful manifest save, bypasses only the review-dialog limit, and uses a freshly loaded validated manifest while revalidating active paths and exact generated content for each deletion. Cleanup can be cancelled and is checkpointed every 500 removals.
+- Neither cleanup mode deletes directories, unowned/modified files, nor anything in Google Drive.
 
 The destination must be writable by Kodi. If the destination is an SMB/NFS share, permissions are governed by the credentials and mount/share configuration Kodi uses for that destination—not by the Google service account. The destination must be trusted: generic Kodi VFS backends do not provide uniform no-follow, exclusive-create, locking, or fully atomic replacement guarantees against malicious concurrent writers. Embedded credentials in the destination URL are rejected.
 
@@ -127,4 +131,4 @@ The script excludes `.git`, tests, caches, unexpected files, symlinks, and devel
 
 `.github/workflows/ci.yml` runs the unit suite, Python/XML validation, and package integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
 
-`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.1.1` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.
+`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.1.2` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.

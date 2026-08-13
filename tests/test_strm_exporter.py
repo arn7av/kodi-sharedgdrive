@@ -38,6 +38,7 @@ class MemoryVfs:
     def __init__(self):
         self.files = {}
         self.directories = {"exports"}
+        self.failed_deletes = set()
 
     def exists(self, path):
         return path in self.files or path in self.directories
@@ -50,6 +51,8 @@ class MemoryVfs:
         return MemoryFile(self, path, mode)
 
     def delete(self, path):
+        if path in self.failed_deletes:
+            return False
         self.files.pop(path, None)
         return True
 
@@ -72,6 +75,12 @@ class FakeDrive:
             return
         folder = {"id": "folder_1", "name": "Movies"}
         yield [folder], {"id": "video_1", "name": "Example (2026).mkv"}
+
+
+class FailingDrive(FakeDrive):
+    def walk_videos(self, cancelled=None):
+        raise DriveError("enumeration failed")
+        yield
 
 
 class ExporterTests(unittest.TestCase):
@@ -125,6 +134,51 @@ class ExporterTests(unittest.TestCase):
         manifest = json.loads(vfs.files["exports/.sharedgdrive-export.json"])
         self.assertEqual("video_1", manifest["stale_files"]["Movies/Example (2026).strm"])
 
+    def test_auto_prune_removes_stale_owned_file_after_complete_export(self):
+        vfs = MemoryVfs()
+        SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+
+        result = SnapshotExporter(
+            FakeDrive(videos=[]),
+            vfs,
+            "exports",
+            "plugin://plugin.video.sharedgdrive/",
+        ).export(auto_prune=True)
+
+        self.assertEqual(1, result["auto_pruned"])
+        self.assertEqual(0, result["cleanup_skipped"])
+        self.assertEqual(0, result["stale"])
+        self.assertNotIn("exports/Movies/Example (2026).strm", vfs.files)
+
+    def test_cancelled_export_never_auto_prunes_previous_owned_files(self):
+        vfs = MemoryVfs()
+        SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+
+        result = SnapshotExporter(
+            FakeDrive(videos=[]),
+            vfs,
+            "exports",
+            "plugin://plugin.video.sharedgdrive/",
+        ).export(auto_prune=True, cancelled=lambda: True)
+
+        self.assertTrue(result["cancelled"])
+        self.assertNotIn("auto_pruned", result)
+        self.assertIn("exports/Movies/Example (2026).strm", vfs.files)
+
+    def test_failed_export_never_auto_prunes_previous_owned_files(self):
+        vfs = MemoryVfs()
+        SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+
+        with self.assertRaises(DriveError):
+            SnapshotExporter(
+                FailingDrive(),
+                vfs,
+                "exports",
+                "plugin://plugin.video.sharedgdrive/",
+            ).export(auto_prune=True)
+
+        self.assertIn("exports/Movies/Example (2026).strm", vfs.files)
+
     def test_modified_stale_file_loses_exporter_ownership(self):
         vfs = MemoryVfs()
         SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
@@ -150,6 +204,97 @@ class ExporterTests(unittest.TestCase):
         self.assertNotIn("exports/Movies/Example (2026).strm", vfs.files)
         manifest = json.loads(vfs.files["exports/.sharedgdrive-export.json"])
         self.assertEqual({}, manifest["stale_files"])
+
+    def test_auto_prune_bypasses_review_dialog_limit(self):
+        vfs = MemoryVfs()
+        stale_files = {}
+        for index in range(strm_exporter._MAX_REVIEWABLE_STALE + 1):
+            relative_path = "Video {0}.strm".format(index)
+            file_id = "video_{0}".format(index)
+            stale_files[relative_path] = file_id
+            vfs.files["exports/" + relative_path] = (
+                "plugin://plugin.video.sharedgdrive/?action=play&file_id={0}\n".format(file_id)
+            )
+        vfs.files["exports/.sharedgdrive-export.json"] = json.dumps({
+            "version": 2,
+            "drive_id": "drive_1",
+            "files": {},
+            "stale_files": stale_files,
+        })
+        manager = StaleExportManager(
+            vfs,
+            "exports",
+            "plugin://plugin.video.sharedgdrive/",
+            "drive_1",
+        )
+
+        with self.assertRaises(DriveError):
+            manager.list_owned_stale()
+        result = manager.remove_all_owned_stale()
+
+        self.assertEqual(strm_exporter._MAX_REVIEWABLE_STALE + 1, result["removed"])
+        self.assertEqual(0, result["remaining"])
+        self.assertFalse(result["cancelled"])
+
+    def test_auto_prune_revalidates_exact_content_before_deletion(self):
+        vfs = MemoryVfs()
+        SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+        SnapshotExporter(FakeDrive(videos=[]), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+        path = "exports/Movies/Example (2026).strm"
+        vfs.files[path] = "manually changed"
+        manager = StaleExportManager(vfs, "exports", "plugin://plugin.video.sharedgdrive/", "drive_1")
+
+        result = manager.remove_all_owned_stale()
+
+        self.assertEqual(0, result["removed"])
+        self.assertEqual(1, result["skipped"])
+        self.assertEqual(0, result["remaining"])
+        self.assertEqual("manually changed", vfs.files[path])
+
+    def test_auto_prune_retains_manifest_entry_when_local_delete_fails(self):
+        vfs = MemoryVfs()
+        SnapshotExporter(FakeDrive(), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+        SnapshotExporter(FakeDrive(videos=[]), vfs, "exports", "plugin://plugin.video.sharedgdrive/").export()
+        path = "exports/Movies/Example (2026).strm"
+        vfs.failed_deletes.add(path)
+        manager = StaleExportManager(vfs, "exports", "plugin://plugin.video.sharedgdrive/", "drive_1")
+
+        result = manager.remove_all_owned_stale()
+
+        self.assertEqual(0, result["removed"])
+        self.assertEqual(1, result["skipped"])
+        self.assertEqual(1, result["remaining"])
+        manifest = json.loads(vfs.files["exports/.sharedgdrive-export.json"])
+        self.assertEqual("video_1", manifest["stale_files"]["Movies/Example (2026).strm"])
+
+    def test_auto_prune_cancellation_checkpoints_and_retains_remaining_entries(self):
+        vfs = MemoryVfs()
+        stale_files = {}
+        for index in range(600):
+            relative_path = "Video {0}.strm".format(index)
+            file_id = "video_{0}".format(index)
+            stale_files[relative_path] = file_id
+            vfs.files["exports/" + relative_path] = (
+                "plugin://plugin.video.sharedgdrive/?action=play&file_id={0}\n".format(file_id)
+            )
+        vfs.files["exports/.sharedgdrive-export.json"] = json.dumps({
+            "version": 2,
+            "drive_id": "drive_1",
+            "files": {},
+            "stale_files": stale_files,
+        })
+        checks = []
+        manager = StaleExportManager(vfs, "exports", "plugin://plugin.video.sharedgdrive/", "drive_1")
+
+        result = manager.remove_all_owned_stale(
+            cancelled=lambda: checks.append(True) or len(checks) > 510,
+        )
+
+        self.assertEqual(510, result["removed"])
+        self.assertEqual(90, result["remaining"])
+        self.assertTrue(result["cancelled"])
+        manifest = json.loads(vfs.files["exports/.sharedgdrive-export.json"])
+        self.assertEqual(90, len(manifest["stale_files"]))
 
     def test_stale_manager_skips_file_changed_after_review(self):
         vfs = MemoryVfs()
