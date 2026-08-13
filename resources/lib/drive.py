@@ -53,12 +53,16 @@ class DriveClient:
             if len(visited) > _MAX_FOLDERS_PER_EXPORT:
                 raise DriveError("The shared drive has too many folders to export safely.")
             items = self._list_folder(folder_id, validate_folder=False, cancelled=cancelled)
-            folders = []
-            for item in items:
-                if item.get("mimeType") == _FOLDER_MIME_TYPE:
-                    folders.append(item)
-                else:
-                    yield ancestors, item
+            folders = sorted(
+                (item for item in items if item.get("mimeType") == _FOLDER_MIME_TYPE),
+                key=_export_item_sort_key,
+            )
+            videos = sorted(
+                (item for item in items if item.get("mimeType") != _FOLDER_MIME_TYPE),
+                key=_export_item_sort_key,
+            )
+            for item in videos:
+                yield ancestors, item
             for folder in reversed(folders):
                 pending.append((folder["id"], ancestors + [folder]))
 
@@ -277,6 +281,11 @@ def parse_debug_file_reference(value):
     except (ValueError, UnicodeError) as exc:
         raise ConfigurationError("Enter a valid Google Drive file link or file ID.") from exc
     raise ConfigurationError("The Google Drive link does not identify a supported file.")
+
+
+def _export_item_sort_key(item):
+    name = item.get("name", "")
+    return (name.casefold(), name, item["id"])
 
 
 def _validate_debug_file_id(value):

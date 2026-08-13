@@ -40,10 +40,13 @@ class FakeFile:
 
 
 class FakeVfs:
-    def __init__(self, files):
+    def __init__(self, files, file_factory=None):
         self.files = files
+        self.file_factory = file_factory
 
     def File(self, path):
+        if self.file_factory:
+            return self.file_factory()
         return FakeFile(self.files[path])
 
 
@@ -108,14 +111,52 @@ class ConfigTests(unittest.TestCase):
             config.snapshot_export_folder = "smb://user:password@example/share"
         self.assertNotIn("snapshot_export_folder", addon.values)
 
-    def test_clears_legacy_stored_export_folder_with_embedded_credentials(self):
+    def test_rejects_percent_encoded_export_folder_credentials_before_storage(self):
         addon = FakeAddon()
-        addon.values["snapshot_export_folder"] = "smb://user:password@example/share"
         config = KodiConfig(addon, FakeVfs({}))
 
-        with self.assertRaises(ConfigurationError):
-            _ = config.snapshot_export_folder
-        self.assertEqual("", addon.values["snapshot_export_folder"])
+        for path in (
+            "smb://user%40example/share",
+            "smb://user%3Apassword%40example/share",
+            "smb://domain%2Fuser:password@host/share",
+            "smb://domain%3Fuser:password@host/share",
+            "smb://domain%23user:password@host/share",
+        ):
+            with self.subTest(path=path), self.assertRaises(ConfigurationError):
+                config.snapshot_export_folder = path
+        self.assertNotIn("snapshot_export_folder", addon.values)
+
+    def test_clears_legacy_stored_export_folder_with_embedded_credentials(self):
+        for path in (
+            "smb://user:password@example/share",
+            "smb://user%3Apassword%40example/share",
+        ):
+            addon = FakeAddon()
+            addon.values["snapshot_export_folder"] = path
+            config = KodiConfig(addon, FakeVfs({}))
+
+            with self.subTest(path=path), self.assertRaises(ConfigurationError):
+                _ = config.snapshot_export_folder
+            self.assertEqual("", addon.values["snapshot_export_folder"])
+
+    def test_never_falls_back_to_unbounded_credential_read(self):
+        class SizedReadUnsupported(FakeFile):
+            def __init__(self):
+                super().__init__("unused")
+                self.unbounded_read = False
+
+            def read(self, size=-1):
+                if size >= 0:
+                    raise TypeError("sized reads unsupported")
+                self.unbounded_read = True
+                return self.value
+
+        source = SizedReadUnsupported()
+        config = KodiConfig(FakeAddon(), FakeVfs({}, file_factory=lambda: source))
+
+        with self.assertRaisesRegex(ConfigurationError, "safely"):
+            config.import_credentials("credentials.json")
+        self.assertFalse(source.unbounded_read)
 
     def test_clear_credentials(self):
         addon = FakeAddon()

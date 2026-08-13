@@ -4,6 +4,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -50,6 +51,30 @@ class FolderResultCacheTests(unittest.TestCase):
             cache.put("fingerprint", "folder_1", [{"id": "video_1", "name": "x" * (2 * 1024 * 1024)}])
 
             self.assertIsNone(cache.get("fingerprint", "folder_1"))
+
+    def test_rejects_non_finite_or_boolean_timestamps(self):
+        with tempfile.TemporaryDirectory() as profile:
+            path = os.path.join(profile, "folder_results.json")
+            cache = FolderResultCache(profile, clock=lambda: 1000)
+            for cached_at in (float("nan"), float("inf"), True, 10**1000):
+                with self.subTest(cached_at=cached_at):
+                    with open(path, "w", encoding="utf-8") as destination:
+                        json.dump({
+                            "version": 1,
+                            "fingerprint": "fp",
+                            "entries": {
+                                "folder_1": {"cached_at": cached_at, "items": []},
+                            },
+                        }, destination)
+                    self.assertIsNone(cache.get("fp", "folder_1"))
+
+    def test_put_works_without_fchmod(self):
+        with tempfile.TemporaryDirectory() as profile:
+            cache = FolderResultCache(profile, clock=lambda: 1000)
+            with mock.patch("resources.lib.folder_cache.os.fchmod", side_effect=AttributeError):
+                cache.put("fp", "folder_1", [])
+
+            self.assertEqual([], cache.get("fp", "folder_1"))
 
     def test_clear_removes_cache(self):
         with tempfile.TemporaryDirectory() as profile:

@@ -4,6 +4,7 @@ import re
 import urllib.parse
 import uuid
 
+from .config import contains_embedded_credentials
 from .errors import ConfigurationError, DriveError
 
 
@@ -27,6 +28,7 @@ class SnapshotExporter:
         self._plugin_base_url = plugin_base_url
 
         self._assigned_files = {}
+        self._owned_file_paths = {}
         self._folder_segments = {}
         self._used_folder_segments = {}
         self._known_directories = {self._destination}
@@ -53,6 +55,10 @@ class SnapshotExporter:
             owned_files.update(old_manifest.get("stale_files", {}))
         else:
             owned_files = {}
+        self._owned_file_paths = {
+            relative_path.casefold(): (relative_path, file_id)
+            for relative_path, file_id in owned_files.items()
+        }
         new_owned_files = {}
         recoverable_paths = set(owned_files)
         recoverable_manifest_bytes = self._manifest.active_manifest_size(owned_files)
@@ -70,7 +76,7 @@ class SnapshotExporter:
                     progress(result["found"], item.get("name", ""))
 
                 relative_directory = self._resolve_directory(folders)
-                relative_path = self._resolve_file_path(relative_directory, item, owned_files)
+                relative_path = self._resolve_file_path(relative_directory, item)
                 output_path = _join(self._destination, relative_path)
                 owner = owned_files.get(relative_path)
                 plugin_url = self._manifest.plugin_url(item["id"])
@@ -101,7 +107,12 @@ class SnapshotExporter:
                 else:
                     result["written"] += 1
 
-                self._ensure_directory(output_path.rsplit("/", 1)[0])
+                output_directory = (
+                    _join(self._destination, relative_directory)
+                    if relative_directory
+                    else self._destination
+                )
+                self._ensure_directory(output_directory)
                 self._write_strm(output_path, plugin_url)
                 new_owned_files[relative_path] = item["id"]
                 if is_new_ownership:
@@ -215,21 +226,42 @@ class SnapshotExporter:
             parent_key = folder_key
         return "/".join(segments)
 
-    def _resolve_file_path(self, relative_directory, item, owned_files):
+    def _resolve_file_path(self, relative_directory, item):
         filename = _safe_strm_name(item.get("name", "Video"))
-        relative_path = _join(relative_directory, filename) if relative_directory else filename
-        assigned_owner = self._assigned_files.get(relative_path.casefold())
-        existing_owner = owned_files.get(relative_path)
+        relative_path = self._canonical_owned_path(
+            _join(relative_directory, filename) if relative_directory else filename,
+            item["id"],
+        )
 
-        if assigned_owner not in (None, item["id"]) or existing_owner not in (None, item["id"]):
+        if self._path_conflicts(relative_path, item["id"]):
             stem = filename[:-5]
-            filename = "{0} [{1}].strm".format(stem, item["id"][:8])
-            relative_path = _join(relative_directory, filename) if relative_directory else filename
+            for prefix_length in range(min(8, len(item["id"])), len(item["id"]) + 1):
+                filename = "{0} [{1}].strm".format(stem, item["id"][:prefix_length])
+                candidate = _join(relative_directory, filename) if relative_directory else filename
+                relative_path = self._canonical_owned_path(candidate, item["id"])
+                if not self._path_conflicts(relative_path, item["id"]):
+                    break
+            else:
+                raise DriveError("A unique snapshot filename could not be generated.")
 
         if not _is_safe_relative_strm_path(relative_path):
             raise DriveError("A generated snapshot path is too long or unsafe.")
         self._assigned_files[relative_path.casefold()] = item["id"]
         return relative_path
+
+    def _canonical_owned_path(self, relative_path, item_id):
+        owned = self._owned_file_paths.get(relative_path.casefold())
+        if owned and owned[1] == item_id:
+            return owned[0]
+        return relative_path
+
+    def _path_conflicts(self, relative_path, item_id):
+        folded_path = relative_path.casefold()
+        owned = self._owned_file_paths.get(folded_path)
+        return (
+            self._assigned_files.get(folded_path) not in (None, item_id)
+            or (owned is not None and owned[1] != item_id)
+        )
 
 
 class StaleExportManager:
@@ -462,8 +494,8 @@ def _replace_with_rollback(vfs, temporary_path, target_path, error_message):
 def _read_limited(source, limit):
     try:
         value = source.read(limit + 1)
-    except TypeError:
-        value = source.read()
+    except TypeError as exc:
+        raise DriveError("The VFS backend does not support bounded reads.") from exc
     if not isinstance(value, str) or len(value.encode("utf-8")) > limit:
         raise DriveError("A snapshot export file is too large.")
     return value
@@ -495,11 +527,22 @@ def _is_safe_relative_strm_path(path):
 def _validate_destination(destination):
     if not isinstance(destination, str) or not destination.strip():
         raise ConfigurationError("Select a snapshot export folder first.")
-    destination = destination.strip().rstrip("/\\")
-    parsed = urllib.parse.urlsplit(destination)
-    if parsed.username or parsed.password:
+    destination = destination.strip()
+    if contains_embedded_credentials(destination):
         raise ConfigurationError("The snapshot export path must not contain embedded credentials.")
-    return destination
+
+    trimmed = destination.rstrip("/\\")
+    if not trimmed:
+        return destination[0]
+    if re.fullmatch(r"[A-Za-z]:", trimmed) and len(destination) > 2:
+        return trimmed + destination[2]
+
+    scheme_end = destination.find("://")
+    if scheme_end >= 0 and len(trimmed) < scheme_end + 3:
+        scheme_root = destination[:scheme_end + 3]
+        remainder = destination[scheme_end + 3:]
+        return scheme_root + (remainder[0] if remainder else "")
+    return trimmed
 
 
 def _safe_strm_name(name):
@@ -521,12 +564,17 @@ def _safe_name(name):
 
 
 def _unique_name(base, item_id, used):
-    if base.casefold() not in used:
+    if used.get(base.casefold()) in (None, item_id):
         return base
-    return "{0} [{1}]".format(base, item_id[:8])
+    for prefix_length in range(min(8, len(item_id)), len(item_id) + 1):
+        candidate = "{0} [{1}]".format(base, item_id[:prefix_length])
+        if used.get(candidate.casefold()) in (None, item_id):
+            return candidate
+    raise DriveError("A unique snapshot folder name could not be generated.")
 
 
 def _join(base, child):
     if not base:
         return child
-    return base.rstrip("/\\") + "/" + child.lstrip("/\\")
+    separator = "" if base.endswith(("/", "\\")) else "/"
+    return base + separator + child.lstrip("/\\")

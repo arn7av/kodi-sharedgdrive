@@ -1,6 +1,6 @@
 # Security and performance design review
 
-This review covers version 0.2.0 and the intended single-service-account, single-shared-drive use case plus its explicit one-shot diagnostic exception.
+This review covers version 0.2.1 and the intended single-service-account, single-shared-drive use case plus its explicit one-shot diagnostic exception.
 
 ## Security conclusions
 
@@ -81,7 +81,7 @@ Playback startup requires a token with at least 55 minutes remaining. This avoid
 
 The default-off media preflight uses `Range: bytes=0-0` rather than `HEAD`, because a range GET is more representative of actual media access. It closes successful responses without reading media and can surface a current Google 403 before resolution, at the cost of one request and startup latency. An unfollowed redirect is treated as inconclusive. A quota or permission change can still happen after the probe, so it is not a guarantee of successful playback.
 
-Diagnostic playback uses the same authenticated `alt=media` endpoint and direct Kodi transfer after fresh metadata validation. Outside-drive playback refetches metadata and re-establishes the 55-minute token policy immediately after confirmation. The pasted reference is never fetched; only an extracted Drive file ID reaches the fixed Google API endpoint. Public visibility does not trigger an anonymous or direct-link fallback. Resource-key-protected sharing links are intentionally unsupported rather than adding another credential-like input/header path.
+Diagnostic playback uses the same authenticated `alt=media` endpoint and direct Kodi transfer after fresh metadata validation. Outside-drive playback refetches metadata and re-establishes the 55-minute token policy immediately after confirmation. The pasted reference is never fetched; only an extracted Drive file ID reaches the fixed Google API endpoint. Public visibility does not trigger an anonymous or direct-link fallback. Resource-key-protected sharing links are intentionally unsupported rather than adding another credential-like input/header path. Share the file directly with the configured service-account email or move it into the configured shared drive, then use its file ID or a link that does not rely on a resource key.
 
 Target-device validation should cover:
 

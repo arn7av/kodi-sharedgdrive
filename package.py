@@ -1,4 +1,5 @@
 import pathlib
+import re
 import xml.etree.ElementTree as ElementTree
 import zipfile
 
@@ -30,7 +31,7 @@ ALLOWED_PATHS = frozenset((
 def _version():
     root = ElementTree.parse(ROOT / "addon.xml").getroot()
     version = root.attrib.get("version")
-    if not version or any(character not in "0123456789." for character in version):
+    if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise RuntimeError("addon.xml contains an invalid version")
     return version
 

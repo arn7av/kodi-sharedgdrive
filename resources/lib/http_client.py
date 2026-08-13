@@ -100,18 +100,27 @@ class HttpClient:
                     raise DriveError("Google returned an invalid response.")
                 return document
             except urllib.error.HTTPError as exc:
-                if exc.code in _RETRYABLE_STATUS and attempt + 1 < self._attempts:
-                    self._sleep(2**attempt)
-                    continue
-                if auth_request:
-                    raise AuthenticationError("Google rejected the service-account credentials.") from exc
-                if exc.code == 401:
-                    raise UnauthorizedError("The Google access token was rejected.") from exc
-                if exc.code == 403:
-                    raise DriveError(_describe_403(exc) or _GENERIC_403_MESSAGE) from exc
-                if exc.code == 404:
-                    raise DriveError("The requested Google Drive resource was not found.") from exc
-                raise DriveError("Google Drive returned HTTP status {0}.".format(exc.code)) from exc
+                try:
+                    if exc.code in _RETRYABLE_STATUS and attempt + 1 < self._attempts:
+                        self._sleep(2**attempt)
+                        continue
+                    if auth_request:
+                        if exc.code in _RETRYABLE_STATUS:
+                            raise AuthenticationError(
+                                "Google's authentication service is temporarily unavailable."
+                            ) from exc
+                        raise AuthenticationError(
+                            "Google rejected the service-account credentials."
+                        ) from exc
+                    if exc.code == 401:
+                        raise UnauthorizedError("The Google access token was rejected.") from exc
+                    if exc.code == 403:
+                        raise DriveError(_describe_403(exc) or _GENERIC_403_MESSAGE) from exc
+                    if exc.code == 404:
+                        raise DriveError("The requested Google Drive resource was not found.") from exc
+                    raise DriveError("Google Drive returned HTTP status {0}.".format(exc.code)) from exc
+                finally:
+                    exc.close()
             except (urllib.error.URLError, socket.timeout, TimeoutError) as exc:
                 if attempt + 1 < self._attempts:
                     self._sleep(2**attempt)

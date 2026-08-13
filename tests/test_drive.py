@@ -179,6 +179,29 @@ class DriveClientTests(unittest.TestCase):
         self.assertEqual(2, len(http.calls))
         self.assertTrue(all("/files?" in call[0] for call in http.calls))
 
+    def test_export_walk_order_is_deterministic_for_equal_names(self):
+        folder_mime = "application/vnd.google-apps.folder"
+        responses = [
+            {
+                "files": [
+                    {"id": "folder_2", "name": "Movies", "mimeType": folder_mime, "driveId": "drive_1"},
+                    {"id": "folder_1", "name": "Movies", "mimeType": folder_mime, "driveId": "drive_1"},
+                    {"id": "video_2", "name": "Movie", "mimeType": "video/mp4", "driveId": "drive_1", "capabilities": {"canDownload": True}},
+                    {"id": "video_1", "name": "Movie", "mimeType": "video/mp4", "driveId": "drive_1", "capabilities": {"canDownload": True}},
+                ]
+            },
+            {"files": []},
+            {"files": []},
+        ]
+        client = DriveClient(FakeHttp(responses), "token", "drive_1")
+
+        results = list(client.walk_videos())
+
+        self.assertEqual(["video_1", "video_2"], [item["id"] for _, item in results])
+        called_urls = [url for url, _ in client._http.calls]
+        self.assertIn("%27folder_1%27", called_urls[1])
+        self.assertIn("%27folder_2%27", called_urls[2])
+
     def test_builds_authenticated_original_playback_url(self):
         http = FakeHttp(
             [

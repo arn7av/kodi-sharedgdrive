@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="plugin.video.sharedgdrive" name="Shared Google Drive" version="0.2.0" provider-name="Shared Google Drive contributors">
+<addon id="plugin.video.sharedgdrive" name="Shared Google Drive" version="0.2.1" provider-name="Shared Google Drive contributors">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
         <import addon="script.module.pycryptodome"/>

@@ -4,6 +4,14 @@ import urllib.parse
 from .errors import ConfigurationError
 
 
+def contains_embedded_credentials(value):
+    for candidate in (value, urllib.parse.unquote(value)):
+        parsed = urllib.parse.urlsplit(candidate)
+        if parsed.username is not None or parsed.password is not None:
+            return True
+    return False
+
+
 class KodiConfig:
     def __init__(self, addon, xbmcvfs):
         self._addon = addon
@@ -40,19 +48,16 @@ class KodiConfig:
     @property
     def snapshot_export_folder(self):
         value = self._addon.getSettingString("snapshot_export_folder").strip()
-        parsed = urllib.parse.urlsplit(value)
-        if parsed.username or parsed.password:
+        if contains_embedded_credentials(value):
             self._addon.setSettingString("snapshot_export_folder", "")
             raise ConfigurationError("The stored snapshot export path contained embedded credentials and was cleared.")
         return value
 
     @snapshot_export_folder.setter
     def snapshot_export_folder(self, value):
-        parsed = urllib.parse.urlsplit(value)
-        if parsed.username or parsed.password:
+        if contains_embedded_credentials(value):
             raise ConfigurationError("The snapshot export path must not contain embedded credentials.")
         self._addon.setSettingString("snapshot_export_folder", value)
-
 
     def import_credentials(self, path):
         if not path:
@@ -62,8 +67,10 @@ class KodiConfig:
             with self._xbmcvfs.File(path) as source:
                 try:
                     raw = source.read(256 * 1024 + 1)
-                except TypeError:
-                    raw = source.read()
+                except TypeError as exc:
+                    raise ConfigurationError(
+                        "The selected credential file could not be read safely."
+                    ) from exc
             if not isinstance(raw, str) or len(raw.encode("utf-8")) > 256 * 1024:
                 raise ConfigurationError("The selected credential file is too large.")
             document = json.loads(raw)

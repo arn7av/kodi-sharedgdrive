@@ -7,7 +7,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from resources.lib.errors import DriveError
+from resources.lib.errors import ConfigurationError, DriveError
 from resources.lib import strm_exporter
 from resources.lib.strm_exporter import SnapshotExporter, StaleExportManager
 
@@ -324,13 +324,142 @@ class ExporterTests(unittest.TestCase):
             manager.list_owned_stale()
 
     def test_rejects_destination_with_embedded_credentials(self):
-        with self.assertRaises(Exception):
-            SnapshotExporter(
-                FakeDrive(),
-                MemoryVfs(),
-                "smb://user:password@example/share",
-                "plugin://plugin.video.sharedgdrive/",
-            )
+        for path in (
+            "smb://user:password@example/share",
+            "smb://user%40example/share",
+            "smb://user%3Apassword%40example/share",
+            "smb://domain%2Fuser:password@host/share",
+        ):
+            with self.subTest(path=path), self.assertRaises(ConfigurationError):
+                SnapshotExporter(
+                    FakeDrive(),
+                    MemoryVfs(),
+                    path,
+                    "plugin://plugin.video.sharedgdrive/",
+                )
+
+    def test_preserves_destination_roots(self):
+        roots = ("/", "C:\\", "smb://", "special://")
+        for root in roots:
+            with self.subTest(root=root):
+                exporter = SnapshotExporter(
+                    FakeDrive(videos=[]),
+                    MemoryVfs(),
+                    root,
+                    "plugin://plugin.video.sharedgdrive/",
+                )
+                self.assertEqual(root, exporter._destination)
+
+    def test_exports_three_colliding_names_with_shared_id_prefix(self):
+        videos = [
+            ([], {"id": "abcdefgh_1", "name": "Movie.mkv"}),
+            ([], {"id": "abcdefgh_2", "name": "Movie.mp4"}),
+            ([], {"id": "abcdefgh_3", "name": "Movie.avi"}),
+        ]
+        vfs = MemoryVfs()
+
+        result = SnapshotExporter(
+            FakeDrive(videos=videos),
+            vfs,
+            "exports",
+            "plugin://plugin.video.sharedgdrive/",
+        ).export()
+
+        self.assertEqual(3, result["written"])
+        manifest = json.loads(vfs.files["exports/.sharedgdrive-export.json"])
+        self.assertEqual(3, len(manifest["files"]))
+        self.assertEqual(
+            {"Movie.strm", "Movie [abcdefgh].strm", "Movie [abcdefgh_].strm"},
+            set(manifest["files"]),
+        )
+
+    def test_case_only_rename_preserves_owned_manifest_path(self):
+        vfs = MemoryVfs()
+        original = FakeDrive(videos=[([], {"id": "video_1", "name": "Movie.mkv"})])
+        renamed = FakeDrive(videos=[([], {"id": "video_1", "name": "movie.mkv"})])
+        SnapshotExporter(
+            original,
+            vfs,
+            "exports",
+            "plugin://plugin.video.sharedgdrive/",
+        ).export()
+
+        result = SnapshotExporter(
+            renamed,
+            vfs,
+            "exports",
+            "plugin://plugin.video.sharedgdrive/",
+        ).export()
+
+        self.assertEqual(1, result["skipped"])
+        self.assertEqual(0, result["stale"])
+        self.assertIn("exports/Movie.strm", vfs.files)
+        self.assertNotIn("exports/movie.strm", vfs.files)
+        manifest = json.loads(vfs.files["exports/.sharedgdrive-export.json"])
+        self.assertEqual({"Movie.strm": "video_1"}, manifest["files"])
+
+    def test_exports_three_colliding_folder_names_with_shared_id_prefix(self):
+        videos = [
+            ([{"id": "abcdefgh_1", "name": "Movies"}], {"id": "video_1", "name": "One.mkv"}),
+            ([{"id": "abcdefgh_2", "name": "Movies"}], {"id": "video_2", "name": "Two.mkv"}),
+            ([{"id": "abcdefgh_3", "name": "Movies"}], {"id": "video_3", "name": "Three.mkv"}),
+        ]
+        vfs = MemoryVfs()
+
+        result = SnapshotExporter(
+            FakeDrive(videos=videos),
+            vfs,
+            "exports",
+            "plugin://plugin.video.sharedgdrive/",
+        ).export()
+
+        self.assertEqual(3, result["written"])
+        manifest = json.loads(vfs.files["exports/.sharedgdrive-export.json"])
+        self.assertEqual(
+            {
+                "Movies/One.strm",
+                "Movies [abcdefgh]/Two.strm",
+                "Movies [abcdefgh_]/Three.strm",
+            },
+            set(manifest["files"]),
+        )
+
+    def test_concrete_destination_roots_join_without_losing_separators(self):
+        cases = {
+            "/": "/Movie.strm",
+            "C:\\": "C:\\Movie.strm",
+            "smb://server/share/": "smb://server/share/Movie.strm",
+            "special://profile/": "special://profile/Movie.strm",
+        }
+        for destination, expected_path in cases.items():
+            vfs = MemoryVfs()
+            vfs.directories.add(strm_exporter._validate_destination(destination))
+            drive = FakeDrive(videos=[([], {"id": "video_1", "name": "Movie.mkv"})])
+            with self.subTest(destination=destination):
+                SnapshotExporter(
+                    drive,
+                    vfs,
+                    destination,
+                    "plugin://plugin.video.sharedgdrive/",
+                ).export()
+                self.assertIn(expected_path, vfs.files)
+
+    def test_limited_reader_never_falls_back_to_unbounded_read(self):
+        class SizedReadUnsupported:
+            def __init__(self):
+                self.unbounded_read = False
+
+            def read(self, size=-1):
+                if size >= 0:
+                    raise TypeError("sized reads unsupported")
+                self.unbounded_read = True
+                return "unused"
+
+        source = SizedReadUnsupported()
+
+        with self.assertRaisesRegex(DriveError, "bounded reads"):
+            strm_exporter._read_limited(source, 10)
+        self.assertFalse(source.unbounded_read)
 
     def test_rejects_active_stale_manifest_overlap(self):
         vfs = MemoryVfs()

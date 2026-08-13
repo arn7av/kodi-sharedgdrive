@@ -89,7 +89,7 @@ Only files whose MIME type starts with `video/` and whose `capabilities.canDownl
 
 ### One-shot diagnostic playback
 
-**Play one Google Drive file** in Playback settings accepts a raw Drive file ID or a recognized `https://drive.google.com/file/d/...`, `/open?id=...`, or `/uc?id=...` link. The link is parsed locally only to extract a validated file ID; the pasted URL is never requested and never receives the bearer token. Arbitrary URLs, folders, embedded credentials, non-HTTPS links, other hosts, and signed `googleusercontent.com` URLs are rejected. Google links that require a separate `resourcekey` are not currently supported.
+**Play one Google Drive file** in Playback settings accepts a raw Drive file ID or a recognized `https://drive.google.com/file/d/...`, `/open?id=...`, or `/uc?id=...` link. The link is parsed locally only to extract a validated file ID; the pasted URL is never requested and never receives the bearer token. Arbitrary URLs, folders, embedded credentials, non-HTTPS links, other hosts, and signed `googleusercontent.com` URLs are rejected. **Important — `resourcekey` limitation:** links requiring a separate `resourcekey` are unsupported. Share the file directly with the configured service-account email or move it into the configured shared drive, then use its file ID or a link that does not rely on a resource key.
 
 The input remains in memory for that invocation: it is not stored in settings or caches, placed in a plugin URL, logged by the add-on, included in browsing, written to `.strm` files, or added to the export manifest. The add-on performs fresh Drive metadata checks and still requires a non-trashed, downloadable `video/*` item. If the item is outside the configured shared drive—or has no shared-drive ID—the user must explicitly confirm one-time playback. An in-drive diagnostic uses one fresh metadata check. When that check reports an outside-drive item, the add-on asks for confirmation, then reacquires a token meeting the normal startup-lifetime policy and refetches the metadata with an explicit one-shot boundary override before resolving playback. Media still goes directly from Google to Kodi. The initial URL is the fixed Google Drive API endpoint; Kodi controls subsequent media redirects and header handling, as it does for normal playback.
 
@@ -114,7 +114,7 @@ Re-export behavior:
 - **Automatically delete stale exported files** is an opt-in alternative for larger sets. It runs only after a complete fresh enumeration and successful manifest save, bypasses only the review-dialog limit, and uses a freshly loaded validated manifest while revalidating active paths and exact generated content for each deletion. Cleanup can be cancelled and is checkpointed every 500 removals.
 - Neither cleanup mode deletes directories, unowned/modified files, nor anything in Google Drive.
 
-The destination must be writable by Kodi. If the destination is an SMB/NFS share, permissions are governed by the credentials and mount/share configuration Kodi uses for that destination—not by the Google service account. The destination must be trusted: generic Kodi VFS backends do not provide uniform no-follow, exclusive-create, locking, or fully atomic replacement guarantees against malicious concurrent writers. Embedded credentials in the destination URL are rejected.
+The destination must be writable by Kodi. If the destination is an SMB/NFS share, permissions are governed by the credentials and mount/share configuration Kodi uses for that destination—not by the Google service account. The destination must be trusted: generic Kodi VFS backends do not provide uniform no-follow, exclusive-create, locking, or fully atomic replacement guarantees against malicious concurrent writers. Embedded credentials in the destination URL are rejected, including percent-encoded credentials.
 
 ## Dependency
 
@@ -140,4 +140,4 @@ The script excludes `.git`, tests, caches, unexpected files, symlinks, and devel
 
 `.github/workflows/ci.yml` runs the unit suite, Python/XML validation, and package integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
 
-`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.2.0` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.
+`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.2.1` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.

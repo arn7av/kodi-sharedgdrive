@@ -1,5 +1,6 @@
 import base64
 import json
+import math
 import time
 
 from .errors import AuthenticationError
@@ -43,7 +44,13 @@ class ServiceAccountTokenProvider:
         expires_in = response.get("expires_in")
         if not isinstance(token, str) or not token:
             raise AuthenticationError("Google did not return an access token.")
-        if not isinstance(expires_in, (int, float)) or expires_in <= 0 or expires_in > 24 * 60 * 60:
+        if (
+            not isinstance(expires_in, (int, float))
+            or isinstance(expires_in, bool)
+            or (isinstance(expires_in, float) and not math.isfinite(expires_in))
+            or expires_in <= 0
+            or expires_in > 24 * 60 * 60
+        ):
             raise AuthenticationError("Google did not return a valid token lifetime.")
         if self._cache and fingerprint:
             try:

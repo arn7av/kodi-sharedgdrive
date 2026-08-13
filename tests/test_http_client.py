@@ -10,7 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from resources.lib import http_client
-from resources.lib.errors import DriveError
+from resources.lib.errors import AuthenticationError, DriveError
 from resources.lib.http_client import HttpClient
 
 
@@ -34,6 +34,16 @@ class _RaisingOpener:
     def open(self, request, timeout=None):
         self.calls += 1
         raise self._exc
+
+
+class _SequenceOpener:
+    def __init__(self, exceptions):
+        self.exceptions = iter(exceptions)
+        self.calls = 0
+
+    def open(self, request, timeout=None):
+        self.calls += 1
+        raise next(self.exceptions)
 
 
 class _ProbeResponse:
@@ -154,6 +164,42 @@ class HttpClientTests(unittest.TestCase):
 
         self.assertIn("download quota", str(context.exception))
         self.assertEqual(1, opener.calls)
+
+    def test_json_errors_are_closed_on_retry_and_final_failure(self):
+        errors = [
+            urllib.error.HTTPError(
+                "https://www.googleapis.com/drive/v3/files/abc",
+                503,
+                "Unavailable",
+                Message(),
+                io.BytesIO(b""),
+            )
+            for _ in range(2)
+        ]
+        client = HttpClient(
+            attempts=2,
+            sleep=lambda seconds: None,
+            opener=_SequenceOpener(errors),
+        )
+
+        with self.assertRaises(DriveError):
+            client.get_json("https://www.googleapis.com/drive/v3/files/abc")
+
+        self.assertTrue(all(error.fp is None or error.fp.closed for error in errors))
+
+    def test_authentication_service_failure_has_temporary_error(self):
+        error = urllib.error.HTTPError(
+            "https://oauth2.googleapis.com/token",
+            503,
+            "Unavailable",
+            Message(),
+            io.BytesIO(b""),
+        )
+        client = HttpClient(attempts=1, opener=_RaisingOpener(error))
+
+        with self.assertRaisesRegex(AuthenticationError, "temporarily unavailable"):
+            client.post_form("https://oauth2.googleapis.com/token", {"assertion": "value"})
+        self.assertTrue(error.fp is None or error.fp.closed)
 
     def test_403_checks_all_structured_error_reasons(self):
         exc = _http_403({

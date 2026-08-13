@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import tempfile
 
@@ -31,7 +32,7 @@ class FolderResultCache:
         items = entry.get("items")
         now = self._clock()
         if (
-            not isinstance(cached_at, (int, float))
+            not _is_finite_number(cached_at)
             or cached_at > now + 5
             or now - cached_at > _CACHE_TTL_SECONDS
             or not isinstance(items, list)
@@ -51,10 +52,10 @@ class FolderResultCache:
             "cached_at": now,
             "items": items,
         }
-        self._enforce_bounds(document, protected_folder_id=folder_id)
         try:
+            self._enforce_bounds(document, protected_folder_id=folder_id)
             self._write(document)
-        except OSError:
+        except (OSError, TypeError, ValueError):
             pass
 
     def clear(self):
@@ -87,7 +88,7 @@ class FolderResultCache:
         expired = []
         for folder_id, entry in document["entries"].items():
             cached_at = entry.get("cached_at") if isinstance(entry, dict) else None
-            if not isinstance(cached_at, (int, float)) or now - cached_at > _CACHE_TTL_SECONDS:
+            if not _is_finite_number(cached_at) or now - cached_at > _CACHE_TTL_SECONDS:
                 expired.append(folder_id)
         for folder_id in expired:
             del document["entries"][folder_id]
@@ -128,7 +129,7 @@ class FolderResultCache:
         try:
             try:
                 os.fchmod(descriptor, 0o600)
-            except OSError:
+            except (AttributeError, OSError):
                 pass
             with os.fdopen(descriptor, "wb") as destination:
                 destination.write(encoded)
@@ -147,4 +148,15 @@ class FolderResultCache:
 
     @staticmethod
     def _encode(document):
-        return json.dumps(document, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return json.dumps(
+            document,
+            separators=(",", ":"),
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8")
+
+
+def _is_finite_number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return not isinstance(value, float) or math.isfinite(value)

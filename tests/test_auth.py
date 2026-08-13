@@ -10,17 +10,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from resources.lib.auth import DRIVE_READONLY_SCOPE, TOKEN_URL, ServiceAccountTokenProvider
+from resources.lib.errors import AuthenticationError
 
 
 class FakeHttp:
-    def __init__(self):
+    def __init__(self, response=None):
         self.url = None
         self.fields = None
+        self.response = response or {"access_token": "short-lived-token", "expires_in": 3600}
 
     def post_form(self, url, fields):
         self.url = url
         self.fields = fields
-        return {"access_token": "short-lived-token", "expires_in": 3600}
+        return self.response
 
 
 class FakeRSA:
@@ -113,6 +115,27 @@ class AuthTests(unittest.TestCase):
             b"test-signature",
             base64.urlsafe_b64decode(signature_segment + "=" * (-len(signature_segment) % 4)),
         )
+
+    def test_rejects_non_finite_or_boolean_token_lifetime(self):
+        modules = {
+            "Cryptodome": types.ModuleType("Cryptodome"),
+            "Cryptodome.Hash": types.ModuleType("Cryptodome.Hash"),
+            "Cryptodome.PublicKey": types.ModuleType("Cryptodome.PublicKey"),
+            "Cryptodome.Signature": types.ModuleType("Cryptodome.Signature"),
+        }
+        modules["Cryptodome.Hash"].SHA256 = FakeSHA256
+        modules["Cryptodome.PublicKey"].RSA = FakeRSA
+        modules["Cryptodome.Signature"].pkcs1_15 = FakePkcs1
+        for expires_in in (float("nan"), float("inf"), True, 10**1000):
+            http = FakeHttp({"access_token": "token", "expires_in": expires_in})
+            with self.subTest(expires_in=expires_in), mock.patch.dict(sys.modules, modules):
+                provider = ServiceAccountTokenProvider(
+                    http,
+                    "viewer@example.iam.gserviceaccount.com",
+                    "private-key",
+                )
+                with self.assertRaises(AuthenticationError):
+                    provider.get_token()
 
     def test_force_refresh_bypasses_cached_token(self):
         modules = {

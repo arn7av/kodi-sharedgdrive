@@ -225,8 +225,8 @@ msgid "Play one Google Drive file"
 msgstr "Play one Google Drive file"
 
 msgctxt "#30057"
-msgid "One-shot diagnostic playback for a Google Drive file link or file ID. The input is not saved or exported. Files outside the configured shared drive require confirmation."
-msgstr "One-shot diagnostic playback for a Google Drive file link or file ID. The input is not saved or exported. Files outside the configured shared drive require confirmation."
+msgid "IMPORTANT: Links requiring resourcekey are unsupported. Share the file directly with the configured service-account email or move it into the configured shared drive, then enter its file ID or link. Input is not saved or exported; outside files require confirmation."
+msgstr "IMPORTANT: Links requiring resourcekey are unsupported. Share the file directly with the configured service-account email or move it into the configured shared drive, then enter its file ID or link. Input is not saved or exported; outside files require confirmation."
 
 msgctxt "#30058"
 msgid "Google Drive file link or file ID"

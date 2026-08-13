@@ -1,10 +1,13 @@
 import ast
 import pathlib
 import unittest
+import xml.etree.ElementTree as ElementTree
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 KODI_PLUGIN = ROOT / "resources/lib/kodi_plugin.py"
+SETTINGS = ROOT / "resources/settings.xml"
+STRINGS = ROOT / "resources/language/resource.language.en_gb/strings.po"
 
 
 def _constant_value(node):
@@ -47,6 +50,17 @@ class KodiPolicyTests(unittest.TestCase):
         self.assertNotIn("setSettingString", attributes)
         self.assertNotIn("SnapshotExporter", names)
         self.assertNotIn("StaleExportManager", names)
+
+    def test_debug_playback_help_explains_resourcekey_remediation(self):
+        settings = ElementTree.parse(SETTINGS)
+        debug_setting = settings.find(".//setting[@id='debug_play_drive_file']")
+        self.assertEqual("30057", debug_setting.attrib["help"])
+
+        strings = STRINGS.read_text(encoding="utf-8")
+        help_entry = strings.split('msgctxt "#30057"', 1)[1].split("\n\n", 1)[0]
+        self.assertIn("resourcekey", help_entry)
+        self.assertIn("service-account email", help_entry)
+        self.assertIn("configured shared drive", help_entry)
 
     def test_playback_and_export_require_fifty_five_minutes(self):
         module = ast.parse(KODI_PLUGIN.read_text(encoding="utf-8"))
