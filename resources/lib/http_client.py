@@ -11,6 +11,26 @@ from .errors import AuthenticationError, DriveError, UnauthorizedError
 _ALLOWED_HOSTS = frozenset(("oauth2.googleapis.com", "www.googleapis.com"))
 _RETRYABLE_STATUS = frozenset((429, 500, 502, 503, 504))
 _MAX_JSON_BYTES = 8 * 1024 * 1024
+_MAX_ERROR_BODY_BYTES = 64 * 1024
+_GENERIC_403_MESSAGE = "Google Drive denied access to the requested resource."
+_KNOWN_403_REASONS = {
+    "downloadQuotaExceeded": (
+        "Google has temporarily blocked downloads of this file because its "
+        "per-file download quota was exceeded. Wait and try again later."
+    ),
+    "dailyLimitExceeded": "The Google Drive API daily quota for this project has been exceeded.",
+    "userRateLimitExceeded": "Google Drive rate-limited this request. Wait a moment and try again.",
+    "rateLimitExceeded": "Google Drive rate-limited this request. Wait a moment and try again.",
+    "insufficientFilePermissions": (
+        "The service account no longer has permission to access this item in Google Drive."
+    ),
+    "appNotAuthorizedToFile": (
+        "The service account no longer has permission to access this item in Google Drive."
+    ),
+    "domainPolicy": (
+        "A Google Workspace domain policy is blocking the service account's access to this item."
+    ),
+}
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -56,7 +76,7 @@ class HttpClient:
                 if exc.code == 401:
                     raise UnauthorizedError("The Google access token was rejected.") from exc
                 if exc.code == 403:
-                    raise DriveError("Google Drive denied access to the requested resource.") from exc
+                    raise DriveError(_describe_403(exc) or _GENERIC_403_MESSAGE) from exc
                 if exc.code == 404:
                     raise DriveError("The requested Google Drive resource was not found.") from exc
                 raise DriveError("Google Drive returned HTTP status {0}.".format(exc.code)) from exc
@@ -79,3 +99,34 @@ class HttpClient:
             raise ValueError("Refusing a request to a non-allowlisted URL.")
         if parsed.username or parsed.password or parsed.port not in (None, 443):
             raise ValueError("Refusing a URL containing credentials or a non-standard port.")
+
+
+def _describe_403(exc):
+    """Return a static message for a recognized Google 403 reason, or None."""
+    try:
+        raw = exc.read(_MAX_ERROR_BODY_BYTES + 1)
+        if not isinstance(raw, (bytes, bytearray)) or len(raw) > _MAX_ERROR_BODY_BYTES:
+            return None
+        document = json.loads(bytes(raw).decode("utf-8"))
+        if not isinstance(document, dict):
+            return None
+        error = document.get("error")
+        if not isinstance(error, dict):
+            return None
+
+        reasons = []
+        errors = error.get("errors")
+        if isinstance(errors, list):
+            for entry in errors:
+                if isinstance(entry, dict) and isinstance(entry.get("reason"), str):
+                    reasons.append(entry["reason"])
+        if isinstance(error.get("status"), str):
+            reasons.append(error["status"])
+
+        for reason in reasons:
+            message = _KNOWN_403_REASONS.get(reason)
+            if message:
+                return message
+    except Exception:
+        return None
+    return None

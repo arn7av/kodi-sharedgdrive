@@ -34,7 +34,7 @@
 - The profile contains a plaintext, short-lived access-token cache. A local process or add-on acting as the Kodi user can read it until it expires.
 - Kodi itself may log or expose a resolved playback URL containing a short-lived bearer token.
 - Anyone with the service-account private key can mint tokens using other scopes. Google-side access membership—not the scope string in this add-on—is the decisive boundary.
-- Playback requires at least 45 minutes of token lifetime at startup, but the token can still expire during very long playback. The design deliberately accepts this availability limitation rather than running a refresh proxy.
+- Playback requires at least 55 minutes of token lifetime at startup, but the token can still expire during very long playback. The design deliberately accepts this availability limitation rather than running a refresh proxy.
 - Folder-result caches contain short-lived filenames, file IDs, MIME types, and download capability metadata in the local profile.
 - Snapshot manifests and `.strm` URLs disclose Google file IDs and exported filenames to anyone who can read the selected export destination. They contain no credentials or tokens.
 - A malicious video container may target vulnerabilities in Kodi or its media libraries; this add-on does not inspect or transcode media.

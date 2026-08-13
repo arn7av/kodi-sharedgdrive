@@ -1,6 +1,6 @@
 # Security and performance design review
 
-This review covers version 0.1.0 and the intended single-service-account, single-shared-drive use case.
+This review covers version 0.1.1 and the intended single-service-account, single-shared-drive use case.
 
 ## Security conclusions
 
@@ -70,7 +70,7 @@ https://www.googleapis.com/drive/v3/files/<id>?alt=media&supportsAllDrives=true
 
 with an Authorization header. Therefore Python is not a throughput, buffering, or range-seeking bottleneck. Kodi/libcurl controls connection reuse, `Range` requests, media buffering, timeouts, and reconnect behavior.
 
-Playback startup requires a token with at least 45 minutes remaining. This avoids starting most films with an almost-expired token, but a static resolved header still cannot refresh during multi-hour playback. A seek/reconnect after expiry may fail. Solving that requires a refresh-capable local proxy, which is intentionally excluded because it adds an inbound service, concurrency/state management, and a larger security surface.
+Playback startup requires a token with at least 55 minutes remaining. This avoids starting most films with an almost-expired token, but a static resolved header still cannot refresh during multi-hour playback. A seek/reconnect after expiry may fail. Solving that requires a refresh-capable local proxy, which is intentionally excluded because it adds an inbound service, concurrency/state management, and a larger security surface.
 
 Target-device validation should cover:
 

@@ -16,6 +16,10 @@ from .strm_exporter import SnapshotExporter, StaleExportManager
 from .token_cache import TokenCache
 
 
+_PLAYBACK_MINIMUM_TOKEN_SECONDS = 55 * 60
+_EXPORT_MINIMUM_TOKEN_SECONDS = 55 * 60
+
+
 class KodiPlugin:
     def __init__(self, argv):
         self._base_url = argv[0]
@@ -103,7 +107,9 @@ class KodiPlugin:
         if not self._config.is_complete:
             raise PluginError("The add-on is not configured.")
         file_id = self._params.get("file_id", "")
-        playback_url, item = self._drive_client(minimum_token_remaining=2700).get_playback_url(file_id)
+        playback_url, item = self._drive_client(
+            minimum_token_remaining=_PLAYBACK_MINIMUM_TOKEN_SECONDS
+        ).get_playback_url(file_id)
         list_item = xbmcgui.ListItem(label=item.get("name", ""), path=playback_url)
         list_item.setProperty("IsPlayable", "true")
         list_item.setMimeType(item.get("mimeType", "video/*"))
@@ -180,7 +186,10 @@ class KodiPlugin:
         progress.create(self._addon.getLocalizedString(30030), "")
         try:
             exporter = SnapshotExporter(
-                self._drive_client(use_folder_cache=False, minimum_token_remaining=3300),
+                self._drive_client(
+                    use_folder_cache=False,
+                    minimum_token_remaining=_EXPORT_MINIMUM_TOKEN_SECONDS,
+                ),
                 xbmcvfs,
                 self._config.snapshot_export_folder,
                 "plugin://plugin.video.sharedgdrive/",

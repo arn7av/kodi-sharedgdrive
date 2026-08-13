@@ -79,7 +79,7 @@ Playback uses:
 GET https://www.googleapis.com/drive/v3/files/<file-id>?alt=media&supportsAllDrives=true
 ```
 
-Kodi receives the short-lived bearer token as an HTTP header in its resolved playback URL. Playback startup refreshes cached tokens unless at least 45 minutes remain. The add-on does not run a refresh proxy, so very long playback sessions or seeks after token expiry may still require restarting playback. A proxy should only be added if target-device testing demonstrates that it is necessary.
+Kodi receives the short-lived bearer token as an HTTP header in its resolved playback URL. Playback startup refreshes cached tokens unless at least 55 minutes remain. The add-on does not run a refresh proxy, so very long playback sessions or seeks after token expiry may still require restarting playback. A proxy should only be added if target-device testing demonstrates that it is necessary.
 
 Only files whose MIME type starts with `video/` and whose `capabilities.canDownload` is true are shown as playable.
 
@@ -127,4 +127,4 @@ The script excludes `.git`, tests, caches, unexpected files, symlinks, and devel
 
 `.github/workflows/ci.yml` runs the unit suite, Python/XML validation, and package integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
 
-`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.1.0` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.
+`.github/workflows/release.yml` publishes a release when a semantic version tag such as `v0.1.1` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.

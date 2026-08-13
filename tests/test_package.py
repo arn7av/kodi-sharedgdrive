@@ -10,7 +10,7 @@ SPEC.loader.exec_module(PACKAGE)
 
 class PackageTests(unittest.TestCase):
     def test_version_comes_from_addon_manifest(self):
-        self.assertEqual("0.1.0", PACKAGE._version())
+        self.assertEqual("0.1.1", PACKAGE._version())
 
     def test_package_allowlist_excludes_tests_and_development_files(self):
         relative = {path.relative_to(ROOT).as_posix() for path in PACKAGE._package_files()}
