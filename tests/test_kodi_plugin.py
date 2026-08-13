@@ -23,11 +23,22 @@ sys.modules.setdefault("xbmcplugin", xbmcplugin)
 sys.modules.setdefault("xbmcvfs", xbmcvfs)
 
 from resources.lib import kodi_plugin
+from resources.lib.config import KodiConfig
+from resources.lib.constants import PLAYBACK_MINIMUM_TOKEN_SECONDS
 
 
 class FakeAddon:
+    def __init__(self):
+        self.values = {}
+
     def getLocalizedString(self, identifier):
         return "string-{0}".format(identifier)
+
+    def getSettingString(self, key):
+        return self.values.get(key, "")
+
+    def setSettingString(self, key, value):
+        self.values[key] = value
 
 
 class FakeConfig:
@@ -85,12 +96,42 @@ class FailingFinalDrive(FakeDrive):
         raise kodi_plugin.PluginError("The item changed before playback.")
 
 
+class FakeFolderDialog:
+    def __init__(self, selected_path):
+        self.selected_path = selected_path
+        self.calls = []
+
+    def browseSingle(self, *args):
+        self.calls.append(args)
+        return self.selected_path
+
+
 class FakePlayer:
     def __init__(self):
         self.calls = []
 
     def play(self, url, list_item):
         self.calls.append((url, list_item))
+
+
+class KodiExportFolderTests(unittest.TestCase):
+    def test_unsafe_stored_folder_is_cleared_without_blocking_picker(self):
+        addon = FakeAddon()
+        addon.values["snapshot_export_folder"] = "smb://user:password@example/share"
+        plugin = kodi_plugin.KodiPlugin.__new__(kodi_plugin.KodiPlugin)
+        plugin._addon = addon
+        plugin._config = KodiConfig(addon, object())
+        dialog = FakeFolderDialog("smb://example/exports")
+        original_dialog = kodi_plugin.xbmcgui.Dialog
+        kodi_plugin.xbmcgui.Dialog = lambda: dialog
+        try:
+            plugin._set_export_folder()
+        finally:
+            kodi_plugin.xbmcgui.Dialog = original_dialog
+
+        self.assertEqual(1, len(dialog.calls))
+        self.assertEqual("", dialog.calls[0][-1])
+        self.assertEqual("smb://example/exports", addon.values["snapshot_export_folder"])
 
 
 class KodiDebugPlaybackTests(unittest.TestCase):
@@ -148,7 +189,10 @@ class KodiDebugPlaybackTests(unittest.TestCase):
         self.assertEqual([], dialog.confirmations)
         self.assertEqual([("video_1", False, False)], drive.resolved)
         self.assertEqual(1, len(self.player.calls))
-        expected = {"use_folder_cache": False, "minimum_token_remaining": 55 * 60}
+        expected = {
+            "use_folder_cache": False,
+            "minimum_token_remaining": PLAYBACK_MINIMUM_TOKEN_SECONDS,
+        }
         self.assertEqual([expected], drive_calls)
 
     def test_outside_drive_item_does_not_play_when_confirmation_declined(self):

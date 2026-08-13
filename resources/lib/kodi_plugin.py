@@ -9,16 +9,17 @@ import xbmcvfs
 
 from .auth import ServiceAccountTokenProvider
 from .config import KodiConfig
+from .constants import (
+    EXPORT_MINIMUM_TOKEN_SECONDS,
+    PLAYBACK_MINIMUM_TOKEN_SECONDS,
+    TOKEN_REFRESH_MARGIN_SECONDS,
+)
 from .drive import DriveClient, FOLDER_MIME_TYPE, parse_debug_file_reference
-from .errors import AccessBoundaryError, PluginError
+from .errors import AccessBoundaryError, ConfigurationError, PluginError
 from .folder_cache import FolderResultCache
 from .http_client import HttpClient
 from .strm_exporter import SnapshotExporter, StaleExportManager
 from .token_cache import TokenCache
-
-
-_PLAYBACK_MINIMUM_TOKEN_SECONDS = 55 * 60
-_EXPORT_MINIMUM_TOKEN_SECONDS = 55 * 60
 
 
 class KodiPlugin:
@@ -111,7 +112,7 @@ class KodiPlugin:
             raise PluginError("The add-on is not configured.")
         file_id = self._params.get("file_id", "")
         playback_url, item = self._drive_client(
-            minimum_token_remaining=_PLAYBACK_MINIMUM_TOKEN_SECONDS
+            minimum_token_remaining=PLAYBACK_MINIMUM_TOKEN_SECONDS
         ).get_playback_url(
             file_id,
             preflight=self._config.playback_preflight_enabled,
@@ -134,7 +135,7 @@ class KodiPlugin:
         file_id = parse_debug_file_reference(reference)
         drive = self._drive_client(
             use_folder_cache=False,
-            minimum_token_remaining=_PLAYBACK_MINIMUM_TOKEN_SECONDS,
+            minimum_token_remaining=PLAYBACK_MINIMUM_TOKEN_SECONDS,
         )
         try:
             playback_url, item = drive.get_debug_playback_url(
@@ -149,7 +150,7 @@ class KodiPlugin:
                 return
             drive = self._drive_client(
                 use_folder_cache=False,
-                minimum_token_remaining=_PLAYBACK_MINIMUM_TOKEN_SECONDS,
+                minimum_token_remaining=PLAYBACK_MINIMUM_TOKEN_SECONDS,
             )
             playback_url, item = drive.get_debug_playback_url(
                 file_id,
@@ -202,6 +203,10 @@ class KodiPlugin:
         )
 
     def _set_export_folder(self):
+        try:
+            current_folder = self._config.snapshot_export_folder
+        except ConfigurationError:
+            current_folder = ""
         path = xbmcgui.Dialog().browseSingle(
             3,
             self._addon.getLocalizedString(30024),
@@ -209,7 +214,7 @@ class KodiPlugin:
             "",
             False,
             False,
-            self._config.snapshot_export_folder,
+            current_folder,
         )
         if path:
             self._config.snapshot_export_folder = path
@@ -238,7 +243,7 @@ class KodiPlugin:
             exporter = SnapshotExporter(
                 self._drive_client(
                     use_folder_cache=False,
-                    minimum_token_remaining=_EXPORT_MINIMUM_TOKEN_SECONDS,
+                    minimum_token_remaining=EXPORT_MINIMUM_TOKEN_SECONDS,
                 ),
                 xbmcvfs,
                 self._config.snapshot_export_folder,
@@ -348,7 +353,11 @@ class KodiPlugin:
         self._token_cache().clear()
         self._folder_cache().clear()
 
-    def _drive_client(self, use_folder_cache=True, minimum_token_remaining=300):
+    def _drive_client(
+        self,
+        use_folder_cache=True,
+        minimum_token_remaining=TOKEN_REFRESH_MARGIN_SECONDS,
+    ):
         http = HttpClient()
         token_cache = self._token_cache()
         provider = ServiceAccountTokenProvider(

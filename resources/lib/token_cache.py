@@ -1,14 +1,14 @@
 import hashlib
 import json
-import math
 import os
 import tempfile
+
+from .constants import MAX_TOKEN_LIFETIME_SECONDS, TOKEN_REFRESH_MARGIN_SECONDS
+from .validation import is_finite_number
 
 
 _CACHE_FILENAME = "access_token.json"
 _CACHE_VERSION = 1
-_REFRESH_MARGIN_SECONDS = 300
-_MAX_TOKEN_LIFETIME_SECONDS = 24 * 60 * 60
 
 
 class TokenCache:
@@ -22,7 +22,7 @@ class TokenCache:
         value = "\0".join((client_email, private_key, scope)).encode("utf-8")
         return hashlib.sha256(value).hexdigest()
 
-    def load(self, fingerprint, minimum_remaining=_REFRESH_MARGIN_SECONDS):
+    def load(self, fingerprint, minimum_remaining=TOKEN_REFRESH_MARGIN_SECONDS):
         try:
             with open(self._path, "r", encoding="utf-8") as source:
                 raw = source.read(16 * 1024 + 1)
@@ -39,9 +39,9 @@ class TokenCache:
             or document.get("fingerprint") != fingerprint
             or not isinstance(document.get("token"), str)
             or not document["token"]
-            or not _is_finite_number(document.get("expires_at"))
-            or document["expires_at"] <= now + max(_REFRESH_MARGIN_SECONDS, minimum_remaining)
-            or document["expires_at"] > now + _MAX_TOKEN_LIFETIME_SECONDS
+            or not is_finite_number(document.get("expires_at"))
+            or document["expires_at"] <= now + max(TOKEN_REFRESH_MARGIN_SECONDS, minimum_remaining)
+            or document["expires_at"] > now + MAX_TOKEN_LIFETIME_SECONDS
         ):
             return None
         return document["token"]
@@ -50,9 +50,9 @@ class TokenCache:
         now = self._clock()
         if (
             not token
-            or not _is_finite_number(expires_at)
-            or expires_at <= now + _REFRESH_MARGIN_SECONDS
-            or expires_at > now + _MAX_TOKEN_LIFETIME_SECONDS
+            or not is_finite_number(expires_at)
+            or expires_at <= now + TOKEN_REFRESH_MARGIN_SECONDS
+            or expires_at > now + MAX_TOKEN_LIFETIME_SECONDS
         ):
             return
 
@@ -100,8 +100,3 @@ class TokenCache:
         except FileNotFoundError:
             pass
 
-
-def _is_finite_number(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return False
-    return not isinstance(value, float) or math.isfinite(value)

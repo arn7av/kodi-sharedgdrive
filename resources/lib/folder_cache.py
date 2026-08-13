@@ -1,15 +1,18 @@
 import hashlib
 import json
-import math
 import os
 import tempfile
+
+from .constants import (
+    FOLDER_CACHE_MAX_BYTES,
+    FOLDER_CACHE_MAX_ENTRIES,
+    FOLDER_CACHE_TTL_SECONDS,
+)
+from .validation import is_finite_number
 
 
 _CACHE_FILENAME = "folder_results.json"
 _CACHE_VERSION = 1
-_CACHE_TTL_SECONDS = 180
-_MAX_ENTRIES = 50
-_MAX_BYTES = 2 * 1024 * 1024
 
 
 class FolderResultCache:
@@ -32,9 +35,9 @@ class FolderResultCache:
         items = entry.get("items")
         now = self._clock()
         if (
-            not _is_finite_number(cached_at)
+            not is_finite_number(cached_at)
             or cached_at > now + 5
-            or now - cached_at > _CACHE_TTL_SECONDS
+            or now - cached_at > FOLDER_CACHE_TTL_SECONDS
             or not isinstance(items, list)
             or not all(isinstance(item, dict) for item in items)
         ):
@@ -68,8 +71,8 @@ class FolderResultCache:
         empty = {"version": _CACHE_VERSION, "fingerprint": fingerprint, "entries": {}}
         try:
             with open(self._path, "r", encoding="utf-8") as source:
-                raw = source.read(_MAX_BYTES + 1)
-            if len(raw) > _MAX_BYTES:
+                raw = source.read(FOLDER_CACHE_MAX_BYTES + 1)
+            if len(raw) > FOLDER_CACHE_MAX_BYTES:
                 return empty
             document = json.loads(raw)
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
@@ -88,17 +91,17 @@ class FolderResultCache:
         expired = []
         for folder_id, entry in document["entries"].items():
             cached_at = entry.get("cached_at") if isinstance(entry, dict) else None
-            if not _is_finite_number(cached_at) or now - cached_at > _CACHE_TTL_SECONDS:
+            if not is_finite_number(cached_at) or now - cached_at > FOLDER_CACHE_TTL_SECONDS:
                 expired.append(folder_id)
         for folder_id in expired:
             del document["entries"][folder_id]
 
     def _enforce_bounds(self, document, protected_folder_id):
         entries = document["entries"]
-        while len(entries) > _MAX_ENTRIES:
+        while len(entries) > FOLDER_CACHE_MAX_ENTRIES:
             self._remove_oldest(entries, protected_folder_id)
 
-        while len(self._encode(document)) > _MAX_BYTES and entries:
+        while len(self._encode(document)) > FOLDER_CACHE_MAX_BYTES and entries:
             if len(entries) == 1 and protected_folder_id in entries:
                 del entries[protected_folder_id]
                 break
@@ -118,7 +121,7 @@ class FolderResultCache:
 
     def _write(self, document):
         encoded = self._encode(document)
-        if len(encoded) > _MAX_BYTES:
+        if len(encoded) > FOLDER_CACHE_MAX_BYTES:
             return
         os.makedirs(self._profile_path, mode=0o700, exist_ok=True)
         descriptor, temporary_path = tempfile.mkstemp(
@@ -155,8 +158,3 @@ class FolderResultCache:
             allow_nan=False,
         ).encode("utf-8")
 
-
-def _is_finite_number(value):
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return False
-    return not isinstance(value, float) or math.isfinite(value)

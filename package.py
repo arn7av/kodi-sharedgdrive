@@ -18,6 +18,7 @@ ALLOWED_PATHS = frozenset((
     "resources/lib/__init__.py",
     "resources/lib/auth.py",
     "resources/lib/config.py",
+    "resources/lib/constants.py",
     "resources/lib/drive.py",
     "resources/lib/errors.py",
     "resources/lib/folder_cache.py",
@@ -25,6 +26,7 @@ ALLOWED_PATHS = frozenset((
     "resources/lib/kodi_plugin.py",
     "resources/lib/strm_exporter.py",
     "resources/lib/token_cache.py",
+    "resources/lib/validation.py",
 ))
 
 

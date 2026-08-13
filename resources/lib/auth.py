@@ -1,9 +1,10 @@
 import base64
 import json
-import math
 import time
 
+from .constants import MAX_TOKEN_LIFETIME_SECONDS, TOKEN_REFRESH_MARGIN_SECONDS
 from .errors import AuthenticationError
+from .validation import is_finite_number
 
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -19,7 +20,11 @@ class ServiceAccountTokenProvider:
         self._clock = clock
         self._cache = cache
 
-    def get_token(self, minimum_remaining=300, force_refresh=False):
+    def get_token(
+        self,
+        minimum_remaining=TOKEN_REFRESH_MARGIN_SECONDS,
+        force_refresh=False,
+    ):
         if not self._client_email or not self._private_key:
             raise AuthenticationError("Service-account credentials are not configured.")
 
@@ -45,11 +50,9 @@ class ServiceAccountTokenProvider:
         if not isinstance(token, str) or not token:
             raise AuthenticationError("Google did not return an access token.")
         if (
-            not isinstance(expires_in, (int, float))
-            or isinstance(expires_in, bool)
-            or (isinstance(expires_in, float) and not math.isfinite(expires_in))
+            not is_finite_number(expires_in)
             or expires_in <= 0
-            or expires_in > 24 * 60 * 60
+            or expires_in > MAX_TOKEN_LIFETIME_SECONDS
         ):
             raise AuthenticationError("Google did not return a valid token lifetime.")
         if self._cache and fingerprint:
