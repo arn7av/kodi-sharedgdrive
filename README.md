@@ -52,6 +52,19 @@ The add-on makes HTTPS requests only to:
 
 Redirects are disabled so an authorization header or JWT assertion cannot be redirected to another host. An optional media preflight accepts a Google redirect only as an inconclusive result and never follows it. The add-on does not log credentials, bearer tokens, API response bodies, filenames, or playback URLs.
 
+## Install from the Kodi repository
+
+The release pipeline publishes a Kodi repository at `https://k.atx.sx/`. The repository contains one functional add-on, `plugin.video.sharedgdrive`, plus the small `repository.sharedgdrive` bootstrap that gives Kodi the update URLs.
+
+On the TV, install the repository once:
+
+1. In Kodi, enable installation from unknown sources.
+2. In **File manager**, add `https://k.atx.sx/` as a source.
+3. Choose **Add-ons → Install from zip file**, open that source, and install `repository.sharedgdrive.zip`.
+4. Choose **Install from repository → Shared Google Drive Repository → Video add-ons → Shared Google Drive**.
+
+Kodi can then discover subsequent releases through the installed repository. The repository ZIP also remains available from the same stable URL for additional Kodi devices.
+
 ## Google setup
 
 1. Create or select a Google Cloud project.
@@ -128,16 +141,36 @@ The non-Kodi modules use only Python's standard library plus PyCryptodome for si
 python3 -m unittest discover -s tests -v
 ```
 
-Create the installable ZIP from the workspace directory with the repository packaging script:
+Create the installable ZIP from the repository root:
 
 ```sh
-python3 plugin.video.sharedgdrive/package.py
+python3 package.py
 ```
 
-The script excludes `.git`, tests, caches, unexpected files, symlinks, and development-only files. The detailed security/performance assessment is in `DESIGN_REVIEW.md`.
+The script always uses `plugin.video.sharedgdrive` as the ZIP's top-level directory, regardless of the Git checkout directory name. It excludes `.git`, tests, caches, unexpected files, symlinks, and development-only files.
+
+Build the complete static Kodi repository site after packaging:
+
+```sh
+VERSION=$(python3 -c "import xml.etree.ElementTree as ET; print(ET.parse('addon.xml').getroot().attrib['version'])")
+python3 build_repository.py \
+  --addon-archive "../plugin.video.sharedgdrive-${VERSION}.zip" \
+  --output ../kodi-repository-site
+```
+
+The detailed security/performance assessment is in `DESIGN_REVIEW.md`.
 
 ## Continuous integration and releases
 
-`.github/workflows/ci.yml` runs the unit suite, Python/XML validation, and package integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
+`.github/workflows/ci.yml` runs the unit suite, Python/XML validation, add-on packaging, Kodi repository generation, and ZIP integrity checks on Python 3.9 and 3.13 for branch pushes and pull requests.
 
-`.github/workflows/release.yml` publishes a release when a semantic version tag in the form `v<major>.<minor>.<patch>` is pushed. The tag must exactly match the version in `addon.xml`. The workflow tests and builds the add-on, publishes the ZIP and SHA-256 checksum, and creates a GitHub build-provenance attestation using OIDC.
+`.github/workflows/release.yml` publishes a release when a semantic version tag in the form `v<major>.<minor>.<patch>` is pushed. The tag must exactly match the version in `addon.xml` and point to a commit contained in `main`. The workflow tests and builds the video and repository add-ons, preserves validated versioned ZIPs from prior GitHub Releases, creates build-provenance attestations using OIDC, deploys matching `addons.xml` metadata and ZIPs to GitHub Pages, and then publishes the ZIPs and SHA-256 checksums in a GitHub Release.
+
+Before the first release deployment:
+
+1. In the GitHub repository's **Settings → Pages**, select **GitHub Actions** as the source.
+2. Set the Pages custom domain to `k.atx.sx`.
+3. At the DNS provider for `atx.sx`, create a `CNAME` record for `k` pointing directly to `arn7av.github.io` (not to a URL or repository path). If using Cloudflare DNS, keep it DNS-only while GitHub validates the domain and provisions HTTPS.
+4. After GitHub makes the option available, enable **Enforce HTTPS**.
+
+To release, bump the version in `addon.xml`, merge the change, then push a matching tag. Never reuse or move a published version tag. When the repository add-on's URLs or metadata change, also bump the version in `repository.sharedgdrive/addon.xml` so Kodi refreshes it.

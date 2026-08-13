@@ -5,6 +5,8 @@ import zipfile
 
 
 ROOT = pathlib.Path(__file__).resolve().parent
+ADDON_ID = "plugin.video.sharedgdrive"
+ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 ALLOWED_PATHS = frozenset((
     "addon.py",
     "addon.xml",
@@ -50,13 +52,28 @@ def _package_files():
     return files
 
 
-def main():
+def _write_file(archive, path, archive_name):
+    info = zipfile.ZipInfo(archive_name, ZIP_TIMESTAMP)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.create_system = 3
+    info.external_attr = 0o100644 << 16
+    archive.writestr(info, path.read_bytes())
+
+
+def build(output_directory=None):
     version = _version()
-    archive_path = ROOT.parent / "plugin.video.sharedgdrive-{0}.zip".format(version)
-    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+    output = ROOT.parent if output_directory is None else pathlib.Path(output_directory)
+    output.mkdir(parents=True, exist_ok=True)
+    archive_path = output / "{0}-{1}.zip".format(ADDON_ID, version)
+    with zipfile.ZipFile(archive_path, "w") as archive:
         for path in _package_files():
-            archive.write(path, "{0}/{1}".format(ROOT.name, path.relative_to(ROOT).as_posix()))
-    print(archive_path)
+            archive_name = "{0}/{1}".format(ADDON_ID, path.relative_to(ROOT).as_posix())
+            _write_file(archive, path, archive_name)
+    return archive_path
+
+
+def main():
+    print(build())
 
 
 if __name__ == "__main__":

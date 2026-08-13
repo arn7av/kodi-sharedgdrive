@@ -55,11 +55,15 @@ jobs:
           for path in root.rglob("*.py"):
               compile(ast.parse(path.read_text(encoding="utf-8")), str(path), "exec")
           ET.parse(root / "addon.xml")
+          ET.parse(root / "repository.sharedgdrive/addon.xml")
           ET.parse(root / "resources/settings.xml")
           PY
 
-      - name: Build and test package
+      - name: Build and test packages
         run: |
           python plugin.video.sharedgdrive/package.py
           VERSION=$(python -c "import xml.etree.ElementTree as ET; print(ET.parse('plugin.video.sharedgdrive/addon.xml').getroot().attrib['version'])")
-          python -m zipfile -t "plugin.video.sharedgdrive-${VERSION}.zip"
+          ARCHIVE="plugin.video.sharedgdrive-${VERSION}.zip"
+          python -m zipfile -t "$ARCHIVE"
+          python plugin.video.sharedgdrive/build_repository.py --addon-archive "$ARCHIVE" --output kodi-repository-site
+          python -m zipfile -t kodi-repository-site/repository.sharedgdrive.zip
