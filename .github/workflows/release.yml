@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          path: plugin.video.sharedgdrive
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check pycryptodome
+
+      - name: Run unit tests
+        run: python -m unittest discover -s plugin.video.sharedgdrive/tests -v
+
+      - name: Validate tag and determine artifact paths
+        id: metadata
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import xml.etree.ElementTree as ET
+
+          tag = os.environ["TAG_NAME"]
+          match = re.fullmatch(r"v(\d+\.\d+\.\d+)", tag)
+          if not match:
+              raise SystemExit(f"Release tag must be v<major>.<minor>.<patch>; got {tag!r}")
+
+          version = ET.parse("plugin.video.sharedgdrive/addon.xml").getroot().attrib["version"]
+          if match.group(1) != version:
+              raise SystemExit(f"Tag {tag} does not match addon.xml version {version}")
+
+          archive = pathlib.Path(f"plugin.video.sharedgdrive-{version}.zip")
+          output = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as destination:
+              destination.write(f"version={version}\n")
+              destination.write(f"archive={archive}\n")
+              destination.write(f"checksum={archive}.sha256\n")
+          PY
+
+      - name: Build package
+        run: python plugin.video.sharedgdrive/package.py
+
+      - name: Verify package integrity
+        env:
+          ARCHIVE: ${{ steps.metadata.outputs.archive }}
+        run: python -m zipfile -t "$ARCHIVE"
+
+      - name: Compute SHA-256 checksum
+        env:
+          ARCHIVE: ${{ steps.metadata.outputs.archive }}
+        run: sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.metadata.outputs.archive }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.metadata.outputs.archive }}
+            ${{ steps.metadata.outputs.checksum }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

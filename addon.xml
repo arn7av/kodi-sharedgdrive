@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="plugin.video.sharedgdrive" name="Shared Google Drive" version="0.1.0" provider-name="Shared Google Drive contributors">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+        <import addon="script.module.pycryptodome"/>
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="addon.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Play videos from one Google shared drive</summary>
+        <description lang="en_GB">A minimal, service-account-only Google Drive plugin. It browses one configured shared drive and plays original video files without synchronization, media management, or background services.</description>
+        <platform>all</platform>
+        <license>MIT</license>
+    </extension>
+</addon>

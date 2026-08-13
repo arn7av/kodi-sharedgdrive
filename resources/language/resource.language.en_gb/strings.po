@@ -1,0 +1,185 @@
+# Kodi Media Center language file
+msgid ""
+msgstr ""
+"Project-Id-Version: Shared Google Drive\n"
+"Language: en_GB\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgctxt "#30001"
+msgid "Configuration"
+msgstr "Configuration"
+
+msgctxt "#30002"
+msgid "Shared drive ID"
+msgstr "Shared drive ID"
+
+msgctxt "#30003"
+msgid "The ID of the only shared drive this add-on may browse. The service account must be a Viewer of this drive and nothing else."
+msgstr "The ID of the only shared drive this add-on may browse. The service account must be a Viewer of this drive and nothing else."
+
+msgctxt "#30004"
+msgid "Service account"
+msgstr "Service account"
+
+msgctxt "#30005"
+msgid "Import service-account JSON"
+msgstr "Import service-account JSON"
+
+msgctxt "#30006"
+msgid "Imports only client_email and private_key into Kodi's standard add-on settings."
+msgstr "Imports only client_email and private_key into Kodi's standard add-on settings."
+
+msgctxt "#30007"
+msgid "Remove imported credentials"
+msgstr "Remove imported credentials"
+
+msgctxt "#30008"
+msgid "Clears the service-account email and private key from Kodi's add-on settings."
+msgstr "Clears the service-account email and private key from Kodi's add-on settings."
+
+msgctxt "#30009"
+msgid "Service-account email"
+msgstr "Service-account email"
+
+msgctxt "#30010"
+msgid "Service-account private key"
+msgstr "Service-account private key"
+
+msgctxt "#30011"
+msgid "Not imported"
+msgstr "Not imported"
+
+msgctxt "#30012"
+msgid "Imported: {0}"
+msgstr "Imported: {0}"
+
+msgctxt "#30013"
+msgid "Configuration required"
+msgstr "Configuration required"
+
+msgctxt "#30014"
+msgid "Import a service-account JSON file and enter the shared drive ID in the add-on settings."
+msgstr "Import a service-account JSON file and enter the shared drive ID in the add-on settings."
+
+msgctxt "#30015"
+msgid "Credentials imported"
+msgstr "Credentials imported"
+
+msgctxt "#30016"
+msgid "Credentials removed"
+msgstr "Credentials removed"
+
+msgctxt "#30017"
+msgid "Invalid credentials"
+msgstr "Invalid credentials"
+
+msgctxt "#30018"
+msgid "The selected file is not a valid Google service-account JSON file."
+msgstr "The selected file is not a valid Google service-account JSON file."
+
+msgctxt "#30019"
+msgid "Google Drive error"
+msgstr "Google Drive error"
+
+msgctxt "#30020"
+msgid "The request could not be completed. Check the shared drive membership and add-on settings."
+msgstr "The request could not be completed. Check the shared drive membership and add-on settings."
+
+msgctxt "#30021"
+msgid "Snapshot .strm export"
+msgstr "Snapshot .strm export"
+
+msgctxt "#30022"
+msgid "Enable snapshot export"
+msgstr "Enable snapshot export"
+
+msgctxt "#30023"
+msgid "Disabled by default. Allows explicit, local .strm snapshot exports; it never writes to Google Drive."
+msgstr "Disabled by default. Allows explicit, local .strm snapshot exports; it never writes to Google Drive."
+
+msgctxt "#30024"
+msgid "Export folder"
+msgstr "Export folder"
+
+msgctxt "#30025"
+msgid "Select a local or Kodi-writable folder for generated .strm files."
+msgstr "Select a local or Kodi-writable folder for generated .strm files."
+
+
+msgctxt "#30028"
+msgid "Export snapshot now"
+msgstr "Export snapshot now"
+
+msgctxt "#30029"
+msgid "Recursively enumerates the configured shared drive and creates missing local .strm files. Existing owned files are retained; unrelated or modified files are skipped."
+msgstr "Recursively enumerates the configured shared drive and creates missing local .strm files. Existing owned files are retained; unrelated or modified files are skipped."
+
+msgctxt "#30030"
+msgid "Snapshot export"
+msgstr "Snapshot export"
+
+msgctxt "#30031"
+msgid "Found {0}: {1}"
+msgstr "Found {0}: {1}"
+
+msgctxt "#30032"
+msgid "Export cancelled. Files already written were kept."
+msgstr "Export cancelled. Files already written were kept."
+
+msgctxt "#30033"
+msgid "Export complete. New: {0}; retained/skipped: {1}; stale: {2}. Stale files are reported but not deleted."
+msgstr "Export complete. New: {0}; retained/skipped: {1}; stale: {2}. Stale files are reported but not deleted."
+
+msgctxt "#30034"
+msgid "Clear folder cache"
+msgstr "Clear folder cache"
+
+msgctxt "#30035"
+msgid "Immediately clears cached interactive folder listings. Credentials and the access token are not changed."
+msgstr "Immediately clears cached interactive folder listings. Credentials and the access token are not changed."
+
+msgctxt "#30036"
+msgid "Folder cache cleared"
+msgstr "Folder cache cleared"
+
+msgctxt "#30037"
+msgid "Review/remove stale exported files"
+msgstr "Review/remove stale exported files"
+
+msgctxt "#30038"
+msgid "No exporter-owned stale .strm files are available. Run a completed snapshot export first."
+msgstr "No exporter-owned stale .strm files are available. Run a completed snapshot export first."
+
+msgctxt "#30039"
+msgid "Confirm stale file removal"
+msgstr "Confirm stale file removal"
+
+msgctxt "#30040"
+msgid "Permanently remove {0} selected exporter-owned .strm file(s)? Folders and unrelated files will not be removed."
+msgstr "Permanently remove {0} selected exporter-owned .strm file(s)? Folders and unrelated files will not be removed."
+
+msgctxt "#30041"
+msgid "Removed: {0}; skipped because missing, modified, or no longer owned: {1}."
+msgstr "Removed: {0}; skipped because missing, modified, or no longer owned: {1}."
+
+msgctxt "#30042"
+msgid "Select stale exporter-owned .strm files to remove. Every file is revalidated immediately before deletion."
+msgstr "Select stale exporter-owned .strm files to remove. Every file is revalidated immediately before deletion."
+
+msgctxt "#30043"
+msgid "Remove credentials"
+msgstr "Remove credentials"
+
+msgctxt "#30044"
+msgid "Remove the imported service-account email/private key and clear token and folder caches?"
+msgstr "Remove the imported service-account email/private key and clear token and folder caches?"
+
+msgctxt "#30045"
+msgid "Run snapshot export"
+msgstr "Run snapshot export"
+
+msgctxt "#30046"
+msgid "Recursively enumerate the shared drive and write .strm files to the configured destination now?"
+msgstr "Recursively enumerate the shared drive and write .strm files to the configured destination now?"
