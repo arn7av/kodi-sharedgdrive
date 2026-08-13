@@ -13,6 +13,8 @@ xbmcgui = types.ModuleType("xbmcgui")
 xbmcplugin = types.ModuleType("xbmcplugin")
 xbmcvfs = types.ModuleType("xbmcvfs")
 xbmc.Player = lambda: None
+xbmc.LOGERROR = 4
+xbmc.log = lambda message, level: None
 xbmcgui.INPUT_ALPHANUM = 0
 xbmcgui.Dialog = lambda: None
 xbmcgui.ListItem = lambda **kwargs: None
@@ -112,6 +114,28 @@ class FakePlayer:
 
     def play(self, url, list_item):
         self.calls.append((url, list_item))
+
+
+class KodiUnexpectedErrorLoggingTests(unittest.TestCase):
+    def test_logs_only_bounded_diagnostic_metadata(self):
+        messages = []
+        original_log = kodi_plugin.xbmc.log
+        kodi_plugin.xbmc.log = lambda message, level: messages.append((message, level))
+        try:
+            try:
+                raise RuntimeError("private-key-material")
+            except RuntimeError as exception:
+                kodi_plugin.KodiPlugin._log_unexpected_error("browse", exception)
+        finally:
+            kodi_plugin.xbmc.log = original_log
+
+        self.assertEqual(1, len(messages))
+        message, level = messages[0]
+        self.assertEqual(kodi_plugin.xbmc.LOGERROR, level)
+        self.assertIn("action=browse", message)
+        self.assertIn("exception=RuntimeError", message)
+        self.assertIn("location=test_kodi_plugin.py:", message)
+        self.assertNotIn("private-key-material", message)
 
 
 class KodiExportFolderTests(unittest.TestCase):

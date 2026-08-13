@@ -1,3 +1,4 @@
+import os
 import sys
 import urllib.parse
 
@@ -68,7 +69,8 @@ class KodiPlugin:
                 raise PluginError("The requested add-on action is invalid.")
         except PluginError as exc:
             self._finish_with_error(action, str(exc))
-        except Exception:
+        except Exception as exc:
+            self._log_unexpected_error(action, exc)
             self._finish_with_error(action, "The operation failed unexpectedly.")
 
     def _browse(self):
@@ -392,6 +394,38 @@ class KodiPlugin:
 
     def _plugin_url(self, **parameters):
         return "{0}?{1}".format(self._base_url, urllib.parse.urlencode(parameters))
+
+    @staticmethod
+    def _log_unexpected_error(action, exception):
+        known_actions = {
+            "browse",
+            "clear_credentials",
+            "clear_folder_cache",
+            "debug_play",
+            "export_snapshot",
+            "import_credentials",
+            "play",
+            "review_stale_exports",
+            "set_export_folder",
+        }
+        safe_action = action if action in known_actions else "invalid"
+        traceback = exception.__traceback__
+        while traceback is not None and traceback.tb_next is not None:
+            traceback = traceback.tb_next
+        location = "unknown"
+        if traceback is not None:
+            location = "{0}:{1}".format(
+                os.path.basename(traceback.tb_frame.f_code.co_filename),
+                traceback.tb_lineno,
+            )
+        xbmc.log(
+            "Shared Google Drive unexpected error: action={0} exception={1} location={2}".format(
+                safe_action,
+                exception.__class__.__name__,
+                location,
+            ),
+            xbmc.LOGERROR,
+        )
 
     def _finish_with_error(self, action, message):
         self._show_error(message)

@@ -110,6 +110,19 @@ Target-device validation should cover:
 - Every stale file is exact-content revalidated immediately before deletion; cleanup is cancellable and persists progress every 500 successful removals.
 - No cleanup path deletes directories or Google Drive content.
 
+## Target-device diagnostic method
+
+Target-device failures should be isolated by layer before code or permission changes are made:
+
+1. Reproduce once and correlate the action/time with `special://logpath/kodi.log`.
+2. Confirm the installed add-on version and inspect add-on/settings schema errors before assuming a Google API problem.
+3. Distinguish expected `PluginError` messages from the generic unexpected-error path. Expected authentication, Drive, configuration, HTTP, and validation failures already carry static user-safe messages.
+4. For the generic path, use the bounded `Shared Google Drive unexpected error` marker (action, exception class, final source location) and nearby Kodi host errors. Do not log exception text or traceback locals because either can contain credential or media data.
+5. Verify hypotheses with a focused regression test and a packaged-add-on check, not only a source-tree unit test. Settings failures in particular must be validated against Kodi's settings schema and on the target build.
+6. Re-test the exact operation on-device after update, then inspect only the new log window. Do not broaden Google membership, scopes, IAM roles, or domain delegation to work around a local Kodi failure.
+
+For webOS, read-only `ares-shell` inspection of the current Kodi log and installed add-on is preferable to copying the complete profile. The profile settings, token cache, folder cache, and unrestricted logs are sensitive artifacts; the exact tested paths and redaction rules are documented in `README.md` and `SECURITY.md`.
+
 ## Operational recommendations
 
 - Keep the service account Viewer-only on exactly one shared drive for normal operation.

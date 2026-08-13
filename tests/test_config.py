@@ -103,6 +103,26 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual("false", defaults["playback_preflight_enabled"])
         self.assertEqual("false", defaults["snapshot_auto_prune"])
 
+    def test_empty_string_settings_allow_their_empty_defaults(self):
+        settings = ElementTree.parse(ROOT / "resources/settings.xml")
+        required_empty_settings = {
+            "shared_drive_id",
+            "snapshot_export_folder",
+            "client_email",
+            "private_key",
+        }
+
+        for setting in settings.findall(".//setting[@type='string']"):
+            setting_id = setting.attrib["id"]
+            if setting_id not in required_empty_settings:
+                continue
+            with self.subTest(setting_id=setting_id):
+                self.assertEqual("", setting.findtext("default"))
+                self.assertEqual("true", setting.findtext("./constraints/allowempty"))
+            required_empty_settings.remove(setting_id)
+
+        self.assertEqual(set(), required_empty_settings)
+
     def test_rejects_export_folder_with_embedded_credentials_before_storage(self):
         addon = FakeAddon()
         config = KodiConfig(addon, FakeVfs({}))

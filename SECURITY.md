@@ -44,9 +44,35 @@
 - A malicious video container may target vulnerabilities in Kodi or its media libraries; this add-on does not inspect or transcode media.
 - The add-on does not persist diagnostic input, but Kodi's input controls, playback history, debug logging, crash reporting, or operating environment may still expose values or resolved bearer-token URLs outside the add-on's control.
 
+## Diagnostic artifacts and safe handling
+
+Kodi's current and previous logs are available through `special://logpath/kodi.log` and `special://logpath/kodi.old.log`. On the tested webOS package, those resolve to:
+
+```text
+/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.log
+/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.old.log
+```
+
+The tested webOS add-on profile is:
+
+```text
+/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/userdata/addon_data/plugin.video.sharedgdrive/
+```
+
+Treat that profile as secret-bearing. In particular:
+
+- `settings.xml` contains the service-account email and private key in plaintext after a successful import.
+- `access_token.json` contains a short-lived bearer token.
+- `folder_results.json` can contain private filenames and Google file IDs.
+- Kodi logs may contain private filenames or a resolved playback URL with an Authorization header because Kodi controls the URL after add-on handoff.
+
+Do not run or publish unrestricted `cat`, `grep`, archive, or recursive-copy output over the profile. When checking whether configuration fields exist, inspect setting IDs only and never print their values. Review log excerpts locally, keep the smallest useful time window, and redact URLs, Authorization data, file/folder names and IDs, network credentials, local usernames/addresses, and unrelated add-on activity before sharing.
+
+For unexpected exceptions, this add-on writes one bounded marker containing only the action, exception class, and final Python source location. It does not include the exception message, traceback locals, credentials, Drive names/IDs, API bodies, or playback URLs. This marker helps identify the failing layer without making debug logging a secret-exfiltration path.
+
 ## Reporting and response
 
-Do not attach service-account JSON, private keys, bearer tokens, Kodi logs containing resolved URLs, or private filenames to public reports.
+Do not attach service-account JSON, private keys, bearer tokens, unreviewed Kodi logs, resolved playback URLs, or private filenames/IDs to public reports.
 
 If credentials may be exposed:
 

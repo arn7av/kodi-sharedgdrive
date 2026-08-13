@@ -51,6 +51,9 @@
                 <setting id="snapshot_export_folder" type="string" label="30024" parent="snapshot_export_enabled" help="30025">
                     <level>0</level>
                     <default></default>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
                     <dependencies>
                         <dependency type="enable" setting="snapshot_export_enabled">true</dependency>
                     </dependencies>
@@ -88,6 +91,9 @@
                 <setting id="client_email" type="string" label="30009" help="">
                     <level>4</level>
                     <default></default>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
                     <visible>false</visible>
                     <control type="edit" format="string">
                         <heading>30009</heading>
@@ -96,6 +102,9 @@
                 <setting id="private_key" type="string" label="30010" help="">
                     <level>4</level>
                     <default></default>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
                     <visible>false</visible>
                     <control type="edit" format="string">
                         <heading>30010</heading>

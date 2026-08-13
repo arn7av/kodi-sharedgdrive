@@ -86,6 +86,36 @@ Kodi can then discover subsequent releases through the installed repository. The
 
 If the service-account key may have been exposed, disable/delete that key in Google Cloud, create a replacement, and import the replacement.
 
+## Troubleshooting
+
+Expected configuration, authentication, permission, quota, and connection failures are shown as specific messages. **The operation failed unexpectedly** means a local Kodi/add-on exception occurred outside those expected paths; it does not by itself indicate that Google rejected the credentials.
+
+Use an evidence-first sequence:
+
+1. Reproduce the problem once and note the action and approximate time.
+2. Confirm Kodi reports the current add-on version and that the credential import showed **Credentials imported**. A failed import can leave the shared-drive ID saved without saving `client_email` or `private_key`.
+3. Inspect the end of Kodi's current log at `special://logpath/kodi.log`; the previous-session log is normally `special://logpath/kodi.old.log`.
+4. Search for `plugin.video.sharedgdrive`, `Shared Google Drive unexpected error`, `EXCEPTION`, and nearby `GetDirectory` or Python errors. The add-on's unexpected-error marker records only the action, exception class, and final Python source location; it intentionally omits exception text and local values.
+5. Separate local initialization/schema failures from network failures before changing Google permissions. For example, `error reading the default value of ...` followed by `Invalid setting type` is a Kodi settings-definition failure that occurs before any Google request. A normal Google API rejection should produce a specific add-on message instead.
+6. Retry after correcting the identified layer. Use **Clear folder cache** only for stale listings; credential import/removal already clears both token and folder caches.
+
+On the tested webOS Kodi package, the relevant paths are:
+
+```text
+/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.log
+/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.old.log
+/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/addons/plugin.video.sharedgdrive/
+/media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/userdata/addon_data/plugin.video.sharedgdrive/
+```
+
+With a device named `tv` in the Rust `ares` tools, inspect recent relevant log lines from a development machine with:
+
+```sh
+~/.cargo/bin/ares-shell -d tv -r 'grep -n -Ei "plugin.video.sharedgdrive|Shared Google Drive unexpected error|EXCEPTION|GetDirectory" /media/developer/apps/usr/palm/applications/org.xbmc.kodi/.kodi/temp/kodi.log | tail -n 120'
+```
+
+These webOS paths are package/build-specific; prefer Kodi's `special://logpath` abstraction when working inside Kodi, and locate the equivalent profile/log directories rather than assuming the same absolute path on another platform. Before sharing diagnostics, follow the redaction guidance in `SECURITY.md`.
+
 ## Playback behavior
 
 Playback uses:
